@@ -5,6 +5,17 @@ import jwt from "jsonwebtoken";
 const router = express.Router();
 router.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
+  if (!password) {
+  return res.status(400).json({
+    message: "Password is required",
+  });
+}
+  const existingEmployee = await Employee.findOne({ email });
+  if (existingEmployee) {
+    return res.status(400).json({
+    message: "Email already registered",
+  });
+}
   const hashedPassword = await bcrypt.hash(password, 10);
   const employee = await Employee.create({
     name,
