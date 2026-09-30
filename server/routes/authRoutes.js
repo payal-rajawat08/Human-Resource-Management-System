@@ -53,6 +53,7 @@ res.status(200).json({
   message: "Login successful",
   token,
   employeeId: employee._id,
+  employeeName: employee.name
 });
 });
 export default router;

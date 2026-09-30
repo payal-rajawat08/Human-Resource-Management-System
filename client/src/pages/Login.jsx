@@ -12,6 +12,7 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log("Login button clicked");
 
     try {
       const response = await axios.post(
@@ -26,6 +27,8 @@ const Login = () => {
 
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("employeeId", response.data.employeeId);
+      localStorage.setItem("employeeName", response.data.employeeName);
+      navigate("/employee-today");
 
     } catch (error) {
       setMessage(

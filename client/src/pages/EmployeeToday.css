@@ -1,0 +1,598 @@
+.employee-today-page {
+    position: relative;
+
+    min-height: 100vh;
+    padding: 32px;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    overflow: hidden;
+
+    background:
+        radial-gradient(
+            circle at 8% 12%,
+            rgba(59, 130, 246, 0.18) 0%,
+            rgba(59, 130, 246, 0.08) 18%,
+            transparent 38%
+        ),
+        radial-gradient(
+            circle at 92% 82%,
+            rgba(99, 102, 241, 0.16) 0%,
+            rgba(99, 102, 241, 0.07) 20%,
+            transparent 40%
+        ),
+        radial-gradient(
+            circle at 78% 8%,
+            rgba(96, 165, 250, 0.10) 0%,
+            transparent 25%
+        ),
+        linear-gradient(
+            135deg,
+            #f8fbff 0%,
+            #f1f6ff 48%,
+            #f8f7ff 100%
+        );
+
+    font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+}
+
+
+/* Soft decorative shape - top left */
+.employee-today-page::before {
+    content: "";
+
+    position: absolute;
+
+    width: 420px;
+    height: 420px;
+
+    top: -220px;
+    left: -160px;
+
+    border-radius: 45% 55% 60% 40%;
+
+    background: linear-gradient(
+        135deg,
+        rgba(37, 99, 235, 0.12),
+        rgba(96, 165, 250, 0.04)
+    );
+
+    filter: blur(5px);
+
+    pointer-events: none;
+}
+
+
+/* Soft decorative shape - bottom right */
+.employee-today-page::after {
+    content: "";
+
+    position: absolute;
+
+    width: 500px;
+    height: 500px;
+
+    right: -240px;
+    bottom: -250px;
+
+    border-radius: 60% 40% 45% 55%;
+
+    background: linear-gradient(
+        135deg,
+        rgba(99, 102, 241, 0.12),
+        rgba(129, 140, 248, 0.04)
+    );
+
+    filter: blur(8px);
+
+    pointer-events: none;
+}
+
+
+/* =========================
+   MAIN CARD
+========================= */
+
+.employee-today-card {
+    position: relative;
+    z-index: 1;
+
+    width: 100%;
+    max-width: 950px;
+
+    padding: 34px;
+
+    background: rgba(255, 255, 255, 0.97);
+
+    border: 1px solid rgba(219, 231, 248, 0.95);
+
+    border-radius: 24px;
+
+    box-shadow:
+        0 30px 80px rgba(37, 99, 235, 0.12),
+        0 10px 30px rgba(15, 23, 42, 0.05);
+
+    backdrop-filter: blur(14px);
+
+    overflow: hidden;
+}
+
+
+/* Top accent */
+
+.employee-today-card::before {
+    content: "";
+
+    position: absolute;
+
+    top: 0;
+    left: 0;
+
+    width: 100%;
+    height: 5px;
+
+    background:
+        linear-gradient(
+            90deg,
+            #1d4ed8,
+            #3b82f6,
+            #6366f1
+        );
+}
+
+
+/* =========================
+   HEADER
+========================= */
+
+.employee-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+
+    gap: 20px;
+
+    padding: 8px 0 26px;
+
+    border-bottom: 1px solid #e6eefb;
+}
+
+.employee-tag {
+    margin: 0 0 8px;
+
+    font-size: 11px;
+    font-weight: 800;
+
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+
+    color: #2563eb;
+}
+
+.employee-header h2 {
+    margin: 0 0 4px;
+
+    font-size: 17px;
+    font-weight: 600;
+
+    color: #64748b;
+}
+
+.employee-header h1 {
+    margin: 0;
+
+    font-size: 34px;
+    line-height: 1.15;
+
+    font-weight: 800;
+
+    color: #0f172a;
+}
+
+.employee-subtitle {
+    margin: 9px 0 0;
+
+    max-width: 520px;
+
+    font-size: 14px;
+    line-height: 1.6;
+
+    color: #64748b;
+}
+
+
+/* =========================
+   WORK STATUS
+========================= */
+
+.status-badge {
+    padding: 10px 16px;
+
+    border-radius: 999px;
+
+    font-size: 12px;
+    font-weight: 750;
+
+    white-space: nowrap;
+}
+
+.status-badge.active {
+    color: #047857;
+
+    background: #ecfdf5;
+
+    border: 1px solid #a7f3d0;
+
+    box-shadow:
+        0 6px 18px rgba(16, 185, 129, 0.10);
+}
+
+.status-badge.inactive {
+    color: #475569;
+
+    background: #f8fafc;
+
+    border: 1px solid #dbe4f0;
+}
+
+
+/* =========================
+   SCREEN SHARE BANNER
+========================= */
+
+.screen-share-banner {
+    margin-top: 20px;
+
+    display: flex;
+    align-items: center;
+
+    padding: 14px 17px;
+
+    border-radius: 14px;
+
+    background:
+        linear-gradient(
+            90deg,
+            #eff6ff,
+            #f8fbff
+        );
+
+    border: 1px solid #bfdbfe;
+
+    color: #1d4ed8;
+
+    font-size: 13px;
+    font-weight: 650;
+}
+
+
+/* =========================
+   STATUS CARDS
+========================= */
+
+.status-grid {
+    display: grid;
+
+    grid-template-columns: repeat(2, 1fr);
+
+    gap: 18px;
+
+    margin-top: 22px;
+}
+
+.status-box {
+    position: relative;
+
+    padding: 22px;
+
+    border-radius: 17px;
+
+    background:
+        linear-gradient(
+            145deg,
+            #ffffff 0%,
+            #f6f9ff 100%
+        );
+
+    border: 1px solid #dbe7f7;
+
+    box-shadow:
+        0 8px 22px rgba(37, 99, 235, 0.05);
+
+    transition: all 0.2s ease;
+}
+
+.status-box:hover {
+    transform: translateY(-2px);
+
+    border-color: #bfdbfe;
+
+    box-shadow:
+        0 14px 30px rgba(37, 99, 235, 0.09);
+}
+
+.status-box::before {
+    content: "";
+
+    position: absolute;
+
+    top: 0;
+    left: 0;
+
+    width: 4px;
+    height: 100%;
+
+    border-radius: 17px 0 0 17px;
+
+    background:
+        linear-gradient(
+            180deg,
+            #2563eb,
+            #60a5fa
+        );
+}
+
+.status-box span {
+    display: block;
+
+    margin-bottom: 8px;
+
+    font-size: 12px;
+    font-weight: 650;
+
+    color: #64748b;
+}
+
+.status-box strong {
+    font-size: 23px;
+    font-weight: 800;
+
+    color: #0f172a;
+}
+
+
+/* =========================
+   ACTION AREA
+========================= */
+
+.action-section {
+    display: flex;
+
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 14px;
+
+    flex-wrap: wrap;
+
+    margin-top: 24px;
+    padding-top: 23px;
+
+    border-top: 1px solid #e6eefb;
+}
+
+
+/* =========================
+   BUTTONS
+========================= */
+
+.action-btn {
+    min-height: 46px;
+
+    padding: 0 20px;
+
+    border: none;
+    border-radius: 12px;
+
+    font-size: 13px;
+    font-weight: 700;
+
+    cursor: pointer;
+
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.action-btn:hover {
+    transform: translateY(-2px);
+}
+
+.action-btn:active {
+    transform: translateY(0);
+}
+
+
+/* Start Work */
+
+.action-btn.primary {
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            #2563eb,
+            #1d4ed8
+        );
+
+    box-shadow:
+        0 10px 22px rgba(37, 99, 235, 0.22);
+}
+
+.action-btn.primary:hover {
+    box-shadow:
+        0 14px 28px rgba(37, 99, 235, 0.28);
+}
+
+
+/* Start Break */
+
+.action-btn.warning {
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            #f59e0b,
+            #d97706
+        );
+
+    box-shadow:
+        0 9px 20px rgba(245, 158, 11, 0.18);
+}
+
+
+/* End Break */
+
+.action-btn.success {
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            #22c55e,
+            #15803d
+        );
+
+    box-shadow:
+        0 9px 20px rgba(34, 197, 94, 0.18);
+}
+
+
+/* Resume Sharing */
+
+.action-btn.resume {
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            #3b82f6,
+            #2563eb
+        );
+
+    box-shadow:
+        0 9px 20px rgba(59, 130, 246, 0.18);
+}
+
+
+/* End Work */
+
+.action-btn.danger {
+    color: white;
+
+    background:
+        linear-gradient(
+            135deg,
+            #ef4444,
+            #dc2626
+        );
+
+    box-shadow:
+        0 9px 20px rgba(239, 68, 68, 0.18);
+}
+
+
+/* =========================
+   FUTURE SECTIONS
+========================= */
+
+.employee-section {
+    margin-top: 28px;
+
+    padding: 25px;
+
+    background: #ffffff;
+
+    border: 1px solid #dbe7f7;
+
+    border-radius: 20px;
+
+    box-shadow:
+        0 8px 25px rgba(37, 99, 235, 0.05);
+}
+
+.employee-section-title {
+    margin: 0 0 18px;
+
+    font-size: 17px;
+    font-weight: 750;
+
+    color: #0f172a;
+}
+
+
+/* =========================
+   FOCUS
+========================= */
+
+.action-btn:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.22);
+
+    outline-offset: 3px;
+}
+
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 800px) {
+
+    .employee-today-page {
+        padding: 20px;
+    }
+
+    .employee-today-card {
+        padding: 27px;
+    }
+
+    .employee-header {
+        flex-direction: column;
+    }
+
+    .status-badge {
+        align-self: flex-start;
+    }
+}
+
+
+@media (max-width: 560px) {
+
+    .employee-today-page {
+        padding: 12px;
+    }
+
+    .employee-today-card {
+        padding: 21px;
+        border-radius: 20px;
+    }
+
+    .employee-header h1 {
+        font-size: 28px;
+    }
+
+    .employee-header h2 {
+        font-size: 15px;
+    }
+
+    .status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .action-section {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .action-btn {
+        width: 100%;
+    }
+}

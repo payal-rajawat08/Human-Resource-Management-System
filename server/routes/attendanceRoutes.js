@@ -5,6 +5,7 @@ import Attendance from "../models/Attendance.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import WorkSession from "../models/WorkSession.js";
 import Break from "../models/Break.js";
+import ShareEvent from "../models/ShareEvent.js";
 router.post("/sessions/start", authMiddleware, async (req, res) => {
     const { shareActive, displaySurface } = req.body;
     if (!shareActive || displaySurface !== "monitor") {
@@ -19,11 +20,26 @@ router.post("/sessions/start", authMiddleware, async (req, res) => {
     status: "open",
 });
     if (existingSession) {
-        existingSession.endedAt = new Date();
-        existingSession.status = "closed";
-        existingSession.endReason = "new_session";
-        await existingSession.save();
+    const endTime = new Date();
+
+    const activeBreak = await Break.findOne({
+        sessionId: existingSession._id,
+        employeeId,
+        endedAt: null,
+    });
+
+    if (activeBreak) {
+        activeBreak.endedAt = endTime;
+        activeBreak.endedBy = "session_end";
+        await activeBreak.save();
     }
+
+    existingSession.endedAt = endTime;
+    existingSession.status = "closed";
+    existingSession.endReason = "new_session";
+
+    await existingSession.save();
+}
     const officeIp = await OfficeIp.findOne({active:true});
     if(!officeIp){
         return res.status(404).json({
@@ -58,36 +74,72 @@ router.post("/sessions/start", authMiddleware, async (req, res) => {
         workSession,
     });
  });
-router.post("/end-work", authMiddleware, async (req, res) => {
-    const attendance = await Attendance.findOne({
-        employeeId: req.employeeId,
-        endTime:null,
-    });
-    const workSession = await WorkSession.findOne({
-        employeeId: req.employeeId,
-        status: "open",
-    });
-    if (!workSession) {
-        return res.status(404).json({
-        message: "No active work session found",
-     });
-    }
-    workSession.endedAt = new Date();
-    workSession.status = "closed";
-    await workSession.save();
-    if(!attendance){
-        return res.status(404).json({
-            message: "No active work session found",
+router.post("/sessions/end", authMiddleware, async (req, res) => {
+    try {
+        const employeeId = req.employeeId;
+
+        // Current open work session find karo
+        const workSession = await WorkSession.findOne({
+            employeeId,
+            status: "open",
+        });
+
+        if (!workSession) {
+            return res.status(404).json({
+                message: "No active work session found",
+            });
+        }
+
+        const endTime = new Date();
+
+        // Agar koi break abhi bhi open hai,
+        // to End Work ke time usko automatically close karo
+        const activeBreak = await Break.findOne({
+            sessionId: workSession._id,
+            employeeId,
+            endedAt: null,
+        });
+
+        if (activeBreak) {
+            activeBreak.endedAt = endTime;
+            activeBreak.endedBy = "session_end";
+
+            await activeBreak.save();
+        }
+
+        // Work session close karo
+        workSession.endedAt = endTime;
+        workSession.status = "closed";
+        workSession.endReason = "user";
+
+        await workSession.save();
+
+        // Current attendance record find karo
+        const attendance = await Attendance.findOne({
+            employeeId,
+            endTime: null,
+        }).sort({ startTime: -1 });
+
+        if (attendance) {
+            attendance.endTime = endTime;
+            await attendance.save();
+        }
+
+        res.status(200).json({
+            message: "Work ended successfully",
+            workSession,
+            attendance,
+        });
+
+    } catch (error) {
+        console.error("Error ending work:", error);
+
+        res.status(500).json({
+            message: "Failed to end work",
         });
     }
-    attendance.endTime = new Date();
-    await attendance.save();
-    res.status(200).json({
-        message:"Work ended successfully",
-        attendance,
-    });
 });
-router.post("/start-break", authMiddleware, async (req, res) => {
+router.post("/sessions/break/start", authMiddleware, async (req, res) => {
     const workSession = await WorkSession.findOne({
     employeeId: req.employeeId,
     status: "open",
@@ -107,7 +159,7 @@ router.post("/start-break", authMiddleware, async (req, res) => {
         break: newBreak,
     });
 });
-router.post("/end-break", authMiddleware, async (req, res) => {
+router.post("/sessions/break/end", authMiddleware, async (req, res) => {
     const activeBreak = await Break.findOne({
         employeeId: req.employeeId,
         endedAt: null,
@@ -125,24 +177,35 @@ router.post("/end-break", authMiddleware, async (req, res) => {
         break: activeBreak,
     });
 });
-router.post("/heartbeat", authMiddleware, async (req, res) => {
-    const workSession = await WorkSession.findOne({
-        employeeId:req.employeeId,
-        status:"open",
-    });
-    if(!workSession){
-        return res.status(404).json({
-            message:"No active work session found",
+router.post("/sessions/heartbeat", authMiddleware, async (req, res) => {
+    try {
+        const { shareActive } = req.body;
+        const workSession = await WorkSession.findOne({
+            employeeId: req.employeeId,
+            status: "open",
+        });
+        if (!workSession) {
+            return res.status(404).json({
+                message: "No active work session found",
+            });
+        }
+        // Last successful heartbeat ka time update karo
+        workSession.lastHeartbeatAt = new Date();
+        // Current screen sharing state update karo
+        workSession.shareActive = Boolean(shareActive);
+        await workSession.save();
+        res.status(200).json({
+            message: "Heartbeat recorded successfully",
+            lastHeartbeatAt: workSession.lastHeartbeatAt,
+            shareActive: workSession.shareActive,
+        });
+    } catch (error) {
+        console.error("Heartbeat error:", error);
+        res.status(500).json({
+            message: "Failed to record heartbeat",
         });
     }
-    workSession.lastHeartbeatAt = new Date();
-    await workSession.save();
-    res.status(200).json({
-        message: "Heartbeat received",
-        lastHeartbeatAt: workSession.lastHeartbeatAt,
-    });
 });
-/*
 router.post("/sessions/share-event", authMiddleware, async (req, res) => {
     const { sessionId, type, detail } = req.body;
     const workSession = await WorkSession.findOne({
@@ -155,7 +218,25 @@ if (!workSession) {
         message: "Active work session not found",
     });
 }
-    */
+const shareEvent = await ShareEvent.create({
+    sessionId,
+    type,
+    detail,
+});
+if (type === "stopped" || type === "track_ended") {
+    workSession.shareActive = false;
+    await workSession.save();
+}
+if (type === "started") {
+    workSession.shareActive = true;
+    await workSession.save();
+}
+res.status(201).json({
+        message: "Share event recorded successfully",
+        shareEvent,
+    });
+});
+    
 router.get("/sessions/current", authMiddleware, async (req, res) => {
     const workSession = await WorkSession.findOne({
     employeeId: req.employeeId,
