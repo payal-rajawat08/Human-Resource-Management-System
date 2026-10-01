@@ -68,6 +68,9 @@ router.post("/sessions/start", authMiddleware, async (req, res) => {
         status: "open",
         shareActive,
     });
+    console.log(
+    `New work session started: ${workSession._id}`
+);
     res.status(201).json({
         message: "Work started successfully",
         attendance,
@@ -185,8 +188,8 @@ router.post("/sessions/heartbeat", authMiddleware, async (req, res) => {
             status: "open",
         });
         if (!workSession) {
-            return res.status(404).json({
-                message: "No active work session found",
+            return res.status(401).json({
+                message: " Session ended",
             });
         }
         // Last successful heartbeat ka time update karo

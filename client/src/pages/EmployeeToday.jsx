@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./EmployeeToday.css";
 
 const EmployeeToday = () => {
+    const navigate = useNavigate();
     // Browser ke actual screen-sharing stream ko temporarily store karega
     const screenStreamRef = useRef(null);
     // Current WorkSession ka MongoDB _id temporarily store karega
@@ -12,6 +14,9 @@ const EmployeeToday = () => {
     const [shareActive, setShareActive] = useState(false);
     const [sessionActive, setSessionActive] = useState(false);
     const [breakActive, setBreakActive] = useState(false);
+    const [workMode, setWorkMode] = useState("Not Detected");
+    const [workTime, setWorkTime] = useState("00:00:00");
+    const [sessionStartedAt, setSessionStartedAt] = useState(null);
     const [employeeName, setEmployeeName] = useState(
     () => localStorage.getItem("employeeName") || "Employee"
 );
@@ -50,6 +55,19 @@ const EmployeeToday = () => {
 
                 console.log("Heartbeat sent");
             } catch (error) {
+                if (error.response?.status === 401) {
+                    localStorage.removeItem("token");
+                    localStorage.removeItem("employeeId");
+                    localStorage.removeItem("employeeName");
+
+                    setSessionActive(false);
+                    setShareActive(false);
+                    setBreakActive(false);
+
+                    navigate("/login");
+                    return;
+                }
+
                 console.error(
                     "Heartbeat failed:",
                     error.response?.data || error.message
@@ -102,7 +120,7 @@ const EmployeeToday = () => {
 
                     // Current backend state
                     setShareActive(session.shareActive);
-
+                    setWorkMode(session.isWfo ? "WFO" : "WFH");
                     // Agar active break object mila to true, warna false
                     setBreakActive(Boolean(activeBreak));
                 }
@@ -166,6 +184,8 @@ const EmployeeToday = () => {
             // UI state update
             setShareActive(true);
             setSessionActive(true);
+            setWorkMode(response.data.workSession.isWfo ? "WFO" : "WFH"
+            );
 
             // Backend se aaye WorkSession ka _id store karo
             sessionIdRef.current =
@@ -226,6 +246,7 @@ const EmployeeToday = () => {
             );
         }
     };
+
     // RESUME SCREEN SHARING
     const handleResumeSharing = async () => {
         let stream;
@@ -416,6 +437,7 @@ const EmployeeToday = () => {
             setSessionActive(false);
             setShareActive(false);
             setBreakActive(false);
+            setWorkMode("Not Detected");
         } catch (error) {
             console.error(
                 "Error ending work:",
@@ -462,6 +484,12 @@ const EmployeeToday = () => {
                     <span>Break</span>
                     <strong>
                         {breakActive ? "Active" : "Not Active"}
+                    </strong>
+                </div>
+                <div className="status-box">
+                    <span>Work Mode</span>
+                    <strong>
+                        {workMode}
                     </strong>
                 </div>
             </div>
