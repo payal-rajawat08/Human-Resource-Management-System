@@ -17,6 +17,14 @@ const EmployeeToday = () => {
     const [workMode, setWorkMode] = useState("Not Detected");
     const [workTime, setWorkTime] = useState("00:00:00");
     const [sessionStartedAt, setSessionStartedAt] = useState(null);
+    const [breakStartedAt, setBreakStartedAt] = useState(null);
+    const [totalBreakSeconds, setTotalBreakSeconds] = useState(0);
+    const [breakTime, setBreakTime] = useState("00:00:00");
+    const [shareStoppedAt, setShareStoppedAt] = useState(null);
+    const [expectedToday, setExpectedToday] = useState("00:00:00");
+    const [totalNoShareSeconds, setTotalNoShareSeconds] = useState(0);
+    const [timeline, setTimeline] = useState([]);
+    const [timelineBreaks, setTimelineBreaks] = useState([]);
     const [employeeName, setEmployeeName] = useState(
     () => localStorage.getItem("employeeName") || "Employee"
 );
@@ -24,6 +32,74 @@ const EmployeeToday = () => {
     useEffect(() => {
         shareActiveRef.current = shareActive;
     }, [shareActive]);
+    useEffect(() => {
+    if (!sessionActive || !sessionStartedAt) {
+        setWorkTime("00:00:00");
+        return;
+    }
+    const updateTimer = () => {
+        const start = new Date(sessionStartedAt).getTime();
+        const now = Date.now();
+        let breakSeconds = totalBreakSeconds;
+        if (breakStartedAt) {
+            breakSeconds += Math.floor(
+                (now - new Date(breakStartedAt).getTime()) / 1000
+    );
+}
+    let noShareSeconds = totalNoShareSeconds;
+    if (shareStoppedAt && !breakActive && !shareActive) {
+        noShareSeconds += Math.floor(
+            (now - shareStoppedAt) / 1000
+    );
+}
+
+const totalSeconds = Math.max(0,Math.floor((now - start) / 1000) - breakSeconds - noShareSeconds);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        setWorkTime(
+            `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+        );
+    };
+
+    updateTimer();
+
+    const timer = setInterval(updateTimer, 1000);
+
+    return () => {
+        clearInterval(timer);
+    };
+}, [sessionActive,sessionStartedAt,totalBreakSeconds,breakStartedAt,totalNoShareSeconds,shareStoppedAt,breakActive,shareActive]);
+    useEffect(() => {
+        if (!breakActive || !breakStartedAt) {
+            setBreakTime("00:00:00");
+            return;
+        }
+
+    const updateBreakTimer = () => {
+        const start = new Date(breakStartedAt).getTime();
+        const now = Date.now();
+
+        const totalSeconds = Math.floor((now - start) / 1000);
+
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        setBreakTime(
+            `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+        );
+    };
+
+    updateBreakTimer();
+
+    const timer = setInterval(updateBreakTimer, 1000);
+
+    return () => {
+        clearInterval(timer);
+    };
+}, [breakActive, breakStartedAt]);
+    
     // Jab sessionActive ho tab Web Worker start karne aur session khatam ho to Worker stop karne ke liye 
     useEffect(() => {
     if (!sessionActive) {
@@ -92,8 +168,6 @@ const EmployeeToday = () => {
     };
 }, [sessionActive]);
 
-
-
     // Page load / refresh hone par current open session check karega
     useEffect(() => {
         const fetchCurrentSession = async () => {
@@ -111,29 +185,59 @@ const EmployeeToday = () => {
 
                 // Backend me property "break" hai,
                 // frontend me hum usko "activeBreak" naam se use kar rahe hain
-                const { session, break: activeBreak } = response.data;
+                const { session, break: activeBreak , expectedToday } = response.data;
+                setExpectedToday(
+                    expectedToday
+                        ?`${String(Math.floor(expectedToday)).padStart(2, "0")}:00:00`
+                        : "00:00:00"
+                );
 
                 if (session) {
                     sessionIdRef.current = session._id;
 
                     setSessionActive(true);
-
                     // Current backend state
-                    setShareActive(session.shareActive);
+                    setShareActive(false);
+                    setShareStoppedAt(Date.now());
                     setWorkMode(session.isWfo ? "WFO" : "WFH");
+                    setSessionStartedAt(session.startedAt);
                     // Agar active break object mila to true, warna false
                     setBreakActive(Boolean(activeBreak));
+                    if (activeBreak) {
+                        setBreakStartedAt(activeBreak.startedAt);
+                    } else {
+                        setBreakStartedAt(null);
+                    }
                 }
-            } catch (error) {
-                console.error(
-                    "Error fetching current session:",
-                    error.response?.data || error.message
-                );
+                } catch (error) {
+                console.error("Error fetching current session:",error.response?.data || error.message);
             }
         };
-
         fetchCurrentSession();
+        fetchTimeline();
     }, []);
+    const fetchTimeline = async () => {
+    try {
+        const token = localStorage.getItem("token");
+
+        const response = await axios.get(
+            "http://localhost:8000/api/sessions/timeline",
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            }
+        );
+        setTimeline(response.data.events);
+        setTimelineBreaks(response.data.breaks);
+    } catch (error) {
+        console.error(
+            "Error fetching timeline:",
+            error.response?.data || error.message
+        );
+    }
+};
+
     // START WORK
     const handleStartWork = async () => {
         let stream;
@@ -186,6 +290,7 @@ const EmployeeToday = () => {
             setSessionActive(true);
             setWorkMode(response.data.workSession.isWfo ? "WFO" : "WFH"
             );
+            setSessionStartedAt(response.data.workSession.startedAt);
 
             // Backend se aaye WorkSession ka _id store karo
             sessionIdRef.current =
@@ -196,6 +301,7 @@ const EmployeeToday = () => {
             videoTrack.onended = async () => {
                 try {
                     setShareActive(false);
+                    setShareStoppedAt(Date.now());
 
                     const currentToken =
                         localStorage.getItem("token");
@@ -292,15 +398,20 @@ const EmployeeToday = () => {
                     },
                 }
             );
-
             setShareActive(true);
-
+            if (shareStoppedAt && sessionStartedAt) {
+                const now = Date.now();
+                const stoppedDuration = Math.floor(
+                    (now - shareStoppedAt) / 1000
+                );
+                setTotalNoShareSeconds((prev) => prev + stoppedDuration);
+                setShareStoppedAt(null);
+            }
             // Resume ke baad dobara screen stop ho to
             // stopped event send hoga
             videoTrack.onended = async () => {
                 try {
                     setShareActive(false);
-
                     const currentToken =
                         localStorage.getItem("token");
 
@@ -358,8 +469,8 @@ const EmployeeToday = () => {
             );
 
             console.log(response.data);
-
             setBreakActive(true);
+            setBreakStartedAt(response.data.break.startedAt);
         } catch (error) {
             console.error(
                 "Error starting break:",
@@ -376,7 +487,6 @@ const EmployeeToday = () => {
     const handleEndBreak = async () => {
         try {
             const token = localStorage.getItem("token");
-
             const response = await axios.post(
                 "http://localhost:8000/api/sessions/break/end",
                 {},
@@ -386,9 +496,16 @@ const EmployeeToday = () => {
                     },
                 }
             );
-
             console.log(response.data);
-
+            if (breakStartedAt) {
+                const breakDuration = Math.floor(
+               (Date.now() - new Date(breakStartedAt).getTime()) / 1000
+            );
+            setTotalBreakSeconds(
+                (prev) => prev + breakDuration
+            );
+           }
+            setBreakStartedAt(null);
             setBreakActive(false);
         } catch (error) {
             console.error(
@@ -406,7 +523,6 @@ const EmployeeToday = () => {
     const handleEndWork = async () => {
         try {
             const token = localStorage.getItem("token");
-
             const response = await axios.post(
                 "http://localhost:8000/api/sessions/end",
                 {},
@@ -416,9 +532,7 @@ const EmployeeToday = () => {
                     },
                 }
             );
-
             console.log(response.data);
-
             // Event listener remove kar do
             // taaki track.stop() se stopped share event
             // unnecessarily trigger na ho
@@ -430,26 +544,34 @@ const EmployeeToday = () => {
                         track.stop();
                     });
             }
-
             screenStreamRef.current = null;
             sessionIdRef.current = null;
-
             setSessionActive(false);
             setShareActive(false);
             setBreakActive(false);
             setWorkMode("Not Detected");
+            setSessionStartedAt(null);
+            setWorkTime("00:00:00");
+            setBreakStartedAt(null);
+            setTotalBreakSeconds(0);
         } catch (error) {
             console.error(
                 "Error ending work:",
                 error.response?.data || error.message
             );
-
             alert(
                 error.response?.data?.message ||
                 "Unable to end work"
             );
         }
     };
+    const formatTime = (totalSeconds) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
     return (
     <div className="employee-today-page">
         <div className="employee-today-card">
@@ -471,6 +593,11 @@ const EmployeeToday = () => {
                     {sessionActive ? "Work Active" : "Not Started"}
                 </div>
             </div>
+            {shareActive && (
+                <div className="sharing-banner">
+                    🔴 Screen is being shared
+                </div>
+            )}
 
             <div className="status-grid">
                 <div className="status-box">
@@ -493,6 +620,78 @@ const EmployeeToday = () => {
                     </strong>
                 </div>
             </div>
+            <div className="timer-section">
+                <span>Net Work Time</span>
+                <strong>{workTime}</strong>
+            </div>
+            <div className="timer-section">
+                <span>Expected Today</span>
+                <strong>{expectedToday}</strong>
+            </div>
+            <div className="timeline-section">
+    <h3>Today's Timeline</h3>
+
+    {timeline.length === 0 && timelineBreaks.length === 0 ? (
+        <p className="no-timeline">No events yet</p>
+    ) : (
+        [...timeline.map((event) => ({
+            id: event._id,
+            type: event.type,
+            at: event.at,
+        })),
+        ...timelineBreaks.map((item) => ({
+            id: item._id,
+            type: item.endedAt ? "break_ended" : "break_started",
+            at: item.endedAt || item.startedAt,
+        }))]
+        .sort((a, b) => new Date(a.at) - new Date(b.at))
+        .map((item) => (
+            <div className="timeline-item" key={item.id}>
+                <div className="timeline-dot"></div>
+
+                <div className="timeline-content">
+                    <strong>
+                        {item.type === "started"
+                            ? "Screen Sharing Started"
+                            : item.type === "stopped"
+                            ? "Screen Sharing Stopped"
+                            : item.type === "break_started"
+                            ? "Break Started"
+                            : item.type === "break_ended"
+                            ? "Break Ended"
+                            : item.type}
+                    </strong>
+
+                    <span>
+                        {new Date(item.at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        })}
+                    </span>
+                </div>
+            </div>
+        ))
+    )}
+</div>
+          
+            <div className="timer-section">
+                 <span>Break Time</span>
+                 <strong>{breakTime}</strong>
+            </div>
+            <div className="timer-section">
+                <span>Total Break Time Today</span>
+                <strong>{formatTime(totalBreakSeconds)}</strong>
+                </div>
+            {sessionActive && !shareActive && !breakActive && (
+                <div className="share-lost-overlay">
+                    <div className="share-lost-box">
+                        <h3>Screen Sharing Stopped</h3>
+                         <p> Your work timer is paused until screen sharing is resumed.</p>
+                         <button className="action-btn resume" onClick={handleResumeSharing} >Resume Sharing
+                         </button>
+                         </div>
+                         </div>
+                        )}
 
             <div className="action-section">
 
@@ -517,7 +716,6 @@ const EmployeeToday = () => {
                     )}
 
                 {sessionActive &&
-                    shareActive &&
                     breakActive && (
                         <button
                             className="action-btn success"

@@ -6,7 +6,7 @@ const breakSchema = new mongoose.Schema({
     },
     employeeId:{
         type:mongoose.Schema.Types.ObjectId,
-        equire:true,
+        require:true,
     },
     startedAt: {
         type: Date,

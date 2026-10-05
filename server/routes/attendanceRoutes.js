@@ -6,6 +6,7 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import WorkSession from "../models/WorkSession.js";
 import Break from "../models/Break.js";
 import ShareEvent from "../models/ShareEvent.js";
+import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
 router.post("/sessions/start", authMiddleware, async (req, res) => {
     const { shareActive, displaySurface } = req.body;
     if (!shareActive || displaySurface !== "monitor") {
@@ -212,9 +213,9 @@ router.post("/sessions/heartbeat", authMiddleware, async (req, res) => {
 router.post("/sessions/share-event", authMiddleware, async (req, res) => {
     const { sessionId, type, detail } = req.body;
     const workSession = await WorkSession.findOne({
-    _id: sessionId,
-    employeeId: req.employeeId,
-    status: "open",
+        _id: sessionId,
+        employeeId: req.employeeId,
+        status: "open",
 });
 if (!workSession) {
     return res.status(404).json({
@@ -239,8 +240,39 @@ res.status(201).json({
         shareEvent,
     });
 });
-    
+router.get("/sessions/timeline", authMiddleware, async (req, res) => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const workSessions = await WorkSession.find({
+        employeeId: req.employeeId,
+        startedAt: {
+            $gte: startOfDay,
+            $lte: endOfDay,
+        },
+    }).sort({ startedAt: 1 });
+
+    const sessionIds = workSessions.map((session) => session._id);
+    const breaks = await Break.find({
+    sessionId: { $in: sessionIds },
+    }).sort({ startedAt: 1 });
+
+    const events = await ShareEvent.find({
+        sessionId: { $in: sessionIds },
+    }).sort({ at: 1 });
+
+    res.status(200).json({
+        events,
+        breaks,
+    });
+});
 router.get("/sessions/current", authMiddleware, async (req, res) => {
+    const policy = await WorkingHourPolicy.findOne({
+    isDefault: true,
+    });
     const workSession = await WorkSession.findOne({
     employeeId: req.employeeId,
     status: "open",
@@ -253,9 +285,14 @@ router.get("/sessions/current", authMiddleware, async (req, res) => {
         endedAt: null,
        });
     }
+    const expectedToday =
+    policy && policy.mode === "daily_hours"
+        ? policy.hoursPerDay
+        : 0;
     res.status(200).json({
         session: workSession,
         break: activeBreak,
+        expectedToday,
     });
 });
 
