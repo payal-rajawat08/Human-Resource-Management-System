@@ -1,0 +1,41 @@
+.employees-page {
+    min-height: 100vh;
+    padding: 40px;
+    background: #f4f6ff;
+}
+
+.employees-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.employees-header span {
+    color: #5146e5;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+}
+
+.employees-header h1 {
+    margin: 8px 0;
+    font-size: 36px;
+    color: #172554;
+}
+
+.employees-header p {
+    margin: 0;
+    color: #64748b;
+}
+
+.employees-header button {
+    padding: 12px 22px;
+    border: none;
+    border-radius: 10px;
+    background: #5146e5;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+}
