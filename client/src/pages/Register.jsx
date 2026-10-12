@@ -9,6 +9,7 @@ const Register = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -124,17 +125,27 @@ const Register = () => {
           />
 
           <label>Password</label>
-          <input
-            type="password"
-            placeholder="Create a strong password"
-            value={password}
-            required
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="password-wrapper">
+          <input 
+          type={showPassword ? "text" : "password"}
+          placeholder="Create a strong password"
+          value={password}
+          required
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button
+           type="button"
+           className="password-toggle"
+           onClick={() => setShowPassword(!showPassword)}
+        >
+          {showPassword ? "🙈" : "👁️"}
+        </button>
+      </div>
 
-          <button type="submit">
-            Register <span>→</span>
-          </button>
+<button type="submit">
+  Register <span>→</span>
+</button>
+          
 
         </form>
 

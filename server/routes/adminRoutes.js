@@ -6,9 +6,22 @@ import adminAuthMiddleware from "../middleware/adminAuthMiddleware.js";
 import Role from "../models/Role.js";
 import permissionMiddleware from "../middleware/permissionMiddleware.js";
 import Employee from "../models/Employee.js";
+import Attendance from "../models/Attendance.js";
+import Leave from "../models/Leave.js";
+import WorkSession from "../models/WorkSession.js";
+import Break from "../models/Break.js";
+import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 router.post("/register", async (req, res) => {
     try {
+        const adminCount = await Admin.countDocuments();
+        if (adminCount > 0) {
+            return res.status(403).json({
+                message: "Admin registration is disabled",
+            });
+        }
         const { name, email, password } = req.body;
 
         const existingAdmin = await Admin.findOne({ email });
@@ -19,11 +32,21 @@ router.post("/register", async (req, res) => {
             });
         }
         const hashedPassword = await bcrypt.hash(password, 10);
+        let adminRole = await Role.findOne({ name: "admin" });
+        if (!adminRole) {
+            adminRole = await Role.create({
+                name: "admin",
+                permissions: [
+                    "employee.view",
+                    "employee.edit"
+                ],
+            });
+        }
         const admin = await Admin.create({
             name,
             email,
             password: hashedPassword,
-            role: "admin",
+            role: adminRole._id,
         });
         res.status(201).json({
             message: "Admin registered successfully",
@@ -36,6 +59,7 @@ router.post("/register", async (req, res) => {
         });
     }
 });
+
 router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -84,6 +108,7 @@ router.post("/login", async (req, res) => {
         });
     }
 });
+
 router.get("/profile", adminAuthMiddleware, async (req, res) => {
     const admin = await Admin.findById(req.adminId).select("-password");
 
@@ -91,12 +116,14 @@ router.get("/profile", adminAuthMiddleware, async (req, res) => {
         admin,
     });
 });
+
 router.get("/test-employee-edit",adminAuthMiddleware,permissionMiddleware("employee.edit"),(req, res) => {
         res.status(200).json({
             message: "You have employee.edit permission",
         });
     }
 );
+
 router.post("/roles", adminAuthMiddleware, async (req, res) => {
     try {
         const { name, permissions } = req.body;
@@ -117,6 +144,7 @@ router.post("/roles", adminAuthMiddleware, async (req, res) => {
         });
     }
 });
+
 router.get("/roles", adminAuthMiddleware, async (req, res) => {
     try {
         const roles = await Role.find();
@@ -131,6 +159,7 @@ router.get("/roles", adminAuthMiddleware, async (req, res) => {
         });
     }
 });
+
 router.delete("/roles/:id", adminAuthMiddleware, async (req, res) => {
     try {
         const role = await Role.findByIdAndDelete(req.params.id);
@@ -151,6 +180,7 @@ router.delete("/roles/:id", adminAuthMiddleware, async (req, res) => {
         });
     }
 });
+
 router.put("/admins/:id/role", adminAuthMiddleware, async (req, res) => {
     try {
         const { roleId } = req.body;
@@ -180,6 +210,7 @@ router.put("/admins/:id/role", adminAuthMiddleware, async (req, res) => {
         });
     }
 });
+
 router.put("/roles/:id", adminAuthMiddleware, async (req, res) => {
     try {
         const { name, permissions } = req.body;
@@ -207,6 +238,7 @@ router.put("/roles/:id", adminAuthMiddleware, async (req, res) => {
         });
     }
 });
+
 router.get("/employees",adminAuthMiddleware,permissionMiddleware("employee.view"),
     async (req, res) => {
         try {
@@ -223,6 +255,27 @@ router.get("/employees",adminAuthMiddleware,permissionMiddleware("employee.view"
         }
     }
 );
+
+router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
+    try {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+
+        const presentToday = await Attendance.countDocuments({
+            date: { $gte: start, $lte: end },
+            status: "Present",
+        });
+
+        res.status(200).json({ presentToday });
+    } catch (error) {
+        console.error("Attendance count error:", error);
+        res.status(500).json({ message: "Failed to fetch attendance" });
+    }
+});
+
 router.post("/employees",adminAuthMiddleware,permissionMiddleware("employee.edit"),async (req, res) => {
         try {
             const { name, email, password } = req.body;
@@ -259,6 +312,7 @@ router.post("/employees",adminAuthMiddleware,permissionMiddleware("employee.edit
         }
     }
 );
+
 router.put("/employees/:id",adminAuthMiddleware,permissionMiddleware("employee.edit"),
     async (req, res) => {
         try {
@@ -288,6 +342,7 @@ router.put("/employees/:id",adminAuthMiddleware,permissionMiddleware("employee.e
         }
     }
 );
+
 router.delete("/employees/:id",adminAuthMiddleware,permissionMiddleware("employee.edit"),async (req, res) => {
         try {
             const employee = await Employee.findByIdAndDelete(req.params.id);
@@ -305,6 +360,160 @@ router.delete("/employees/:id",adminAuthMiddleware,permissionMiddleware("employe
             console.error("Delete employee error:", error);
             res.status(500).json({
                 message: "Failed to delete employee",
+            });
+        }
+    }
+);
+
+router.get("/leaves", adminAuthMiddleware, async (req, res) => {
+    try {
+        const leaves = await Leave.find()
+            .populate("employeeId", "name email")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ leaves });
+    } catch (error) {
+        console.error("Fetch leaves error:", error);
+        res.status(500).json({
+            message: "Failed to fetch leave requests",
+        });
+    }
+});
+
+router.put("/leaves/:id", adminAuthMiddleware, async (req, res) => {
+    try {
+        const { status } = req.body;
+
+        if (!["Approved", "Rejected"].includes(status)) {
+            return res.status(400).json({
+                message: "Invalid leave status",
+            });
+        }
+
+        const leave = await Leave.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        );
+
+        if (!leave) {
+            return res.status(404).json({
+                message: "Leave request not found",
+            });
+        }
+
+        res.status(200).json({
+            message: "Leave status updated successfully",
+            leave,
+        });
+    } catch (error) {
+        console.error("Update leave error:", error);
+        res.status(500).json({
+            message: "Failed to update leave status",
+        });
+    }
+});
+
+router.get("/leaves/my", authMiddleware, async (req, res) => {
+    try {
+        const leaves = await Leave.find({
+            employeeId: req.employeeId
+        }).sort({ createdAt: -1 });
+
+        res.status(200).json({ leaves });
+    } catch (error) {
+        console.error("Fetch my leaves error:", error);
+        res.status(500).json({
+            message: "Failed to fetch your leave requests"
+        });
+    }
+});
+
+router.post("/leaves", authMiddleware, async (req, res) => {
+    try {
+        
+        const { leaveType, startDate, endDate, reason  } = req.body;
+
+        const leave = await Leave.create({
+            employeeId: req.employeeId,
+            leaveType,
+            startDate,
+            endDate,
+            reason,
+        });
+
+        res.status(201).json({
+            message: "Leave request submitted successfully",
+            leave,
+        });
+    } catch (error) {
+        console.error("Apply leave error:", error);
+        res.status(500).json({
+            message: "Failed to submit leave request",
+        });
+    }
+});
+
+router.get("/employees/:employeeId/today",adminAuthMiddleware,async (req, res) => {
+        try {
+            const { employeeId } = req.params;
+
+            const employee = await Employee.findById(employeeId).select(
+                "name email"
+            );
+
+            if (!employee) {
+                return res.status(404).json({
+                    message: "Employee not found",
+                });
+            }
+
+            const policy = await WorkingHourPolicy.findOne({
+                isDefault: true,
+            });
+
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+
+            const tomorrow = new Date(todayStart);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+
+            const sessions = await WorkSession.find({
+                employeeId,
+                startedAt: {
+                    $gte: todayStart,
+                    $lt: tomorrow,
+                },
+            }).sort({ startedAt: -1 });
+
+            const activeSession = sessions.find(
+                (session) => session.status === "open"
+            ) || null;
+
+            const activeBreak = activeSession
+                ? await Break.findOne({
+                      sessionId: activeSession._id,
+                      employeeId,
+                      endedAt: null,
+                  })
+                : null;
+
+            const expectedToday =
+                policy && policy.mode === "daily_hours"
+                    ? policy.hoursPerDay
+                    : 0;
+
+            res.status(200).json({
+                employee,
+                sessions,
+                session: activeSession,
+                break: activeBreak,
+                expectedToday,
+            });
+        } catch (error) {
+            console.error("Employee today error:", error);
+            res.status(500).json({
+                message: "Failed to fetch employee's today details",
             });
         }
     }

@@ -4,6 +4,11 @@ import axios from "axios";
 import "./EmployeeToday.css";
 
 const EmployeeToday = () => {
+    const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("employeeName");
+    navigate("/login");
+};
     const navigate = useNavigate();
     // Browser ke actual screen-sharing stream ko temporarily store karega
     const screenStreamRef = useRef(null);
@@ -573,7 +578,11 @@ const totalSeconds = Math.max(0,Math.floor((now - start) / 1000) - breakSeconds 
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
     return (
+       
     <div className="employee-today-page">
+        <button className="logout-btn" onClick={handleLogout}>
+          Logout
+        </button>
         <div className="employee-today-card">
             <div className="employee-header">
                 <div>
@@ -583,6 +592,12 @@ const totalSeconds = Math.max(0,Math.floor((now - start) / 1000) - breakSeconds 
                     <p className="employee-subtitle">
                         Track your work session, breaks and screen sharing.
                     </p>
+                    <button 
+                        className="apply-leave-btn"
+                        onClick={() => navigate("/apply-leave")}
+                    >
+                       + Apply Leave
+                    </button>
                 </div>
 
                 <div

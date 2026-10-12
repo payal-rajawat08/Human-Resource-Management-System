@@ -2,17 +2,36 @@ import { useEffect, useState } from "react";
 import "./Employees.css";
 function Employees() {
      const [employees, setEmployees] = useState([]);
+     useEffect(() => {
+        const fetchEmployees = async () => {
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(
+                    "http://localhost:8000/api/admin/employees",
+                    {
+                        headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
 
-    useEffect(() => {
-        fetch("http://localhost:8000/api/admin/employees")
-            .then((res) => res.json())
-            .then((data) => {
-                setEmployees(data.employees);
-            })
-            .catch((error) => {
-                console.error("Failed to fetch employees:", error);
-            });
-    }, []);
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Failed to fetch employees");
+            }
+
+            setEmployees(
+                Array.isArray(data.employees) ? data.employees : []
+            );
+        } catch (error) {
+            console.error("Failed to fetch employees:", error);
+            setEmployees([]);
+        }
+    };
+
+    fetchEmployees();
+}, []);
     return (
         <div className="employees-page">
             <div className="employees-header">

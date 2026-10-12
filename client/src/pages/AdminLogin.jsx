@@ -1,53 +1,86 @@
-import axios from "axios";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import "./AdminLogin.css";
 
 function AdminLogin() {
-    const navigate = useNavigate();
-
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
 
-    const handleSubmit = async (e) => {
+    const navigate = useNavigate();
+
+    const handleLogin = async (e) => {
         e.preventDefault();
 
         try {
-            const response = await axios.post(
+            const response = await fetch(
                 "http://localhost:8000/api/admin/login",
                 {
-                    email,
-                    password,
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ email, password }),
                 }
             );
 
-            localStorage.setItem("adminToken", response.data.token);
+            const data = await response.json();
+
+            if (!response.ok) {
+                alert(data.message || "Login failed");
+                return;
+            }
+
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("adminName", data.admin.name);
 
             navigate("/admin-dashboard");
         } catch (error) {
-            console.error(
-                error.response?.data?.message || "Admin login failed"
-            );
+            alert("Server connection failed");
         }
     };
 
     return (
-        <div>
-            <h1>HRMS Admin Login</h1>
+        <div className="admin-login-page">
+            <form
+                className="admin-login-card"
+                onSubmit={handleLogin}
+            >
+                <h1>HRMS Admin</h1>
+                <p>Sign in to your admin account</p>
 
-            <form onSubmit={handleSubmit}>
                 <input
                     type="email"
                     placeholder="Enter admin email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    required
                 />
 
-                <input
-                    type="password"
-                    placeholder="Enter admin password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="password-field">
+                    <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Enter admin password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                    />
+
+                    <button
+                        type="button"
+                        className="toggle-password"
+                        onClick={() =>
+                            setShowPassword(!showPassword)
+                        }
+                        aria-label={
+                            showPassword
+                                ? "Hide password"
+                                : "Show password"
+                        }
+                    >
+                        {showPassword ? "🙈" : "👁️"}
+                    </button>
+                </div>
 
                 <button type="submit">Login</button>
             </form>

@@ -1,0 +1,130 @@
+
+.admin-login-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #0f172a, #1e40af);
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.admin-login-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 35px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+}
+
+.admin-login-card h1 {
+    margin: 0 0 10px;
+    text-align: center;
+    color: #1e293b;
+    font-size: 30px;
+}
+
+.admin-login-card p {
+    text-align: center;
+    color: #64748b;
+    margin-bottom: 28px;
+}
+
+.admin-login-card input {
+    display: block;
+    width: 100%;
+    padding: 13px;
+    margin-bottom: 18px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 15px;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.admin-login-card input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.admin-login-card button {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.admin-login-card button:hover {
+    background: #1d4ed8;
+}
+
+.admin-login-card .password-field input {
+    display: block;
+    width: 100%;
+    padding-right: 45px;
+}
+
+.admin-login-card .password-field button.toggle-password {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 42px;
+    height: 45px;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent !important;
+    color: #64748b;
+    border: none;
+    box-shadow: none;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.admin-login-card .password-field button.toggle-password:hover {
+    background: transparent !important;
+}
+
+.password-field {
+    position: relative;
+    width: 100%;
+}
+
+.admin-login-card .password-field input {
+    width: 100%;
+    padding-right: 45px;
+}
+
+.admin-login-card .password-field .toggle-password {
+    position: absolute;
+    top: 0;
+    right: 5px;
+    width: 38px;
+    height: 45px;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: #64748b;
+    border: none;
+    box-shadow: none;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.admin-login-card .password-field .toggle-password:hover {
+    background: transparent;
+}
+

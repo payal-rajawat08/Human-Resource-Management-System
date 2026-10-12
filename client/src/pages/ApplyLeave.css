@@ -1,0 +1,119 @@
+
+.apply-leave-page {
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 30px;
+    font-family: Arial, sans-serif;
+    color: #1e293b;
+}
+
+.apply-leave-page h1 {
+    font-size: 30px;
+    font-weight: 700;
+    margin-bottom: 25px;
+    color: #0f172a;
+}
+
+.apply-leave-page h2 {
+    font-size: 23px;
+    margin: 35px 0 20px;
+    color: #0f172a;
+}
+
+
+.apply-leave-page form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: #ffffff;
+    padding: 28px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.apply-leave-page label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+    margin-top: 6px;
+}
+
+.apply-leave-page input,
+.apply-leave-page select,
+.apply-leave-page textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #1e293b;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.apply-leave-page input:focus,
+.apply-leave-page select:focus,
+.apply-leave-page textarea:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.apply-leave-page textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+
+.apply-leave-page form button {
+    margin-top: 12px;
+    padding: 13px 18px;
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.apply-leave-page form button:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+}
+
+
+.apply-leave-page > div > div {
+    margin-bottom: 16px;
+}
+
+.apply-leave-page hr {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 16px 0;
+}
+
+
+.apply-leave-page p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #475569;
+}
+
+@media (max-width: 600px) {
+    .apply-leave-page {
+        margin: 20px auto;
+        padding: 16px;
+    }
+
+    .apply-leave-page h1 {
+        font-size: 25px;
+    }
+
+    .apply-leave-page form {
+        padding: 18px;
+    }
+}

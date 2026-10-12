@@ -7,6 +7,7 @@ import WorkSession from "../models/WorkSession.js";
 import Break from "../models/Break.js";
 import ShareEvent from "../models/ShareEvent.js";
 import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
+
 router.post("/sessions/start", authMiddleware, async (req, res) => {
     const { shareActive, displaySurface } = req.body;
     if (!shareActive || displaySurface !== "monitor") {

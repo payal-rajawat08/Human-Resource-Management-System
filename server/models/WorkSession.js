@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { GiAllSeeingEye } from "react-icons/gi";
 const workSessionSchema = new mongoose.Schema({
     employeeId:{
         type: mongoose.SchemaTypes.ObjectId,

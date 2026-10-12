@@ -2,6 +2,7 @@ import axios from "axios";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Login.css";
+import { useParams } from "react-router-dom";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -9,6 +10,8 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,6 +39,26 @@ const Login = () => {
       );
     }
   };
+const handleForgotPassword = async () => {
+  try {
+    const response = await fetch(
+      "http://localhost:8000/api/forgot-password",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      }
+    );
+
+    const data = await response.json();
+    alert(data.message);
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    alert("Failed to send reset link");
+  }
+};
 
   return (
     <div className="login-page">
@@ -104,17 +127,51 @@ const Login = () => {
 
             <label>Password</label>
 
-            <input
-              type="password"
-              placeholder="Enter your password"
+            <div className="password-wrapper">
+              <input type={showPassword ? "text" : "password"}
+              placeholder="Enter your password" 
               value={password}
               required
               onChange={(e) => setPassword(e.target.value)}
-            />
+              />
+              <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? "🙈" : "👁️"}
+                </button>
+                </div>
+                <div className="forgot-password">
+                  <span onClick={() => setForgotPassword(true)}>
+                    Forgot Password?
+                    </span>
+                  </div>
 
-            <button type="submit">
-              Login <span>→</span>
-            </button>
+                 {forgotPassword && (
+                  <>
+                  <label>Registered Email</label>
+                  <input
+                    type="email"
+                    placeholder="Enter your registered email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+
+                <button type="button" onClick={handleForgotPassword}>
+                  Send Reset Link
+                </button>
+
+                <p onClick={() => setForgotPassword(false)}>
+                 Back to Login
+                </p>
+              </>
+            )}
+
+                <button type="submit">
+                  Login <span>→</span>
+                </button>
 
           </form>
 

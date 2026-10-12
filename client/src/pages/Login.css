@@ -152,7 +152,7 @@
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-.login-form button {
+.login-form > button {
   margin-top: 5px;
   padding: 14px;
   border: none;
@@ -165,7 +165,7 @@
   transition: 0.2s;
 }
 
-.login-form button:hover {
+.login-form > button:hover {
   background: #4338ca;
 }
 
@@ -191,6 +191,61 @@
   text-decoration: underline;
 }
 
+
+.password-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.password-wrapper input {
+  width: 100%;
+  padding-right: 45px;
+  box-sizing: border-box;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 0;
+  width: 40px;
+  height: 48px;
+  padding: 0;
+  margin: 0;
+  color: #555;
+  background: transparent !important;
+  border: none;
+  box-shadow: none !important;
+  border-radius: 0;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle:hover,
+.password-toggle:focus,
+.password-toggle:active {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none;
+}
+.forgot-password {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 18px;
+}
+
+.forgot-password span {
+  color: #4f46e5;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.forgot-password span:hover {
+  text-decoration: underline;
+}
 /* Responsive */
 @media (max-width: 850px) {
   .login-page {

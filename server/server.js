@@ -1,7 +1,10 @@
 import express from "express";
+import dotenv from "dotenv";
+dotenv.config();
 import officeIpRoutes from "./routes/officeIpRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import "./models/Employee.js";
 import "./models/Break.js";
 import connectDb from "./config/db.js";
@@ -13,6 +16,7 @@ app.use(cors());
 app.use("/api", officeIpRoutes);
 app.use("/api",attendanceRoutes);
 app.use("/api",authRoutes);
+app.use("/api/admin", adminRoutes);
 app.get("/my-ip", (req, res) => {
   res.send(req.ip);
 });

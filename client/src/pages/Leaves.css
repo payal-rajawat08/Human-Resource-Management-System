@@ -1,0 +1,37 @@
+.leaves-page {
+    padding: 30px;
+    background: #f8fafc;
+    min-height: 100vh;
+}
+
+.leaves-page h1 {
+    color: #1e293b;
+    margin-bottom: 25px;
+}
+
+.leaves-page > div {
+    background: white;
+    padding: 20px;
+    margin-bottom: 18px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.leaves-page button {
+    padding: 9px 16px;
+    margin-right: 10px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.leaves-page button:first-of-type {
+    background: #16a34a;
+    color: white;
+}
+
+.leaves-page button:last-of-type {
+    background: #dc2626;
+    color: white;
+}

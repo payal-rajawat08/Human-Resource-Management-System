@@ -5,6 +5,10 @@ import EmployeeToday from "./pages/EmployeeToday";
 import AdminDashboard from "./pages/AdminDashboard";
 import Employees from "./pages/Employees";
 import AdminLogin from "./pages/AdminLogin";
+import ResetPassword from "./pages/ResetPassword";
+import Leaves from "./pages/Leaves";
+import AdminRegister from "./pages/AdminRegister";
+import ApplyLeave from "./pages/ApplyLeave";
 function App() {
   return (
     <Routes>
@@ -15,8 +19,11 @@ function App() {
       <Route path="/admin-dashboard" element={<AdminDashboard />} />
       <Route path="/employees" element={<Employees />} />
       <Route path="/admin-login" element={<AdminLogin />} />
+      <Route path="/reset-password/:token"element={<ResetPassword />} />
+      <Route path="/leaves" element={<Leaves />} />
+      <Route path="/admin-register" element={<AdminRegister />} />
+      <Route path="/apply-leave" element={<ApplyLeave />} />
     </Routes>
   );
 }
-
 export default App;
