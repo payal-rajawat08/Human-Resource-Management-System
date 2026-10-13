@@ -73,6 +73,10 @@ router.post("/sessions/start", authMiddleware, async (req, res) => {
     console.log(
     `New work session started: ${workSession._id}`
 );
+    req.io.emit("work-session-updated", {
+        employeeId: employeeId.toString(),
+        eventType: "started",
+    });
     res.status(201).json({
         message: "Work started successfully",
         attendance,
@@ -129,6 +133,10 @@ router.post("/sessions/end", authMiddleware, async (req, res) => {
             attendance.endTime = endTime;
             await attendance.save();
         }
+        req.io.emit("work-session-updated", {
+            employeeId: employeeId.toString(),
+            eventType: "session-stopped",
+        });
 
         res.status(200).json({
             message: "Work ended successfully",
@@ -159,6 +167,10 @@ router.post("/sessions/break/start", authMiddleware, async (req, res) => {
         employeeId: req.employeeId,
         startedAt: new Date(),
     });
+    req.io.emit("work-session-updated", {
+    employeeId: req.employeeId.toString(),
+    eventType: "break-started",
+    });
     res.status(201).json({
         message: "Break started successfully",
         break: newBreak,
@@ -177,6 +189,10 @@ router.post("/sessions/break/end", authMiddleware, async (req, res) => {
     activeBreak.endedAt = new Date();
     activeBreak.endedBy = "user";
     await activeBreak.save();
+    req.io.emit("work-session-updated", {
+    employeeId: req.employeeId.toString(),
+    eventType: "break-ended",
+    });
     res.status(200).json({
         message: "Break ended successfully",
         break: activeBreak,

@@ -1,0 +1,212 @@
+
+.admin-employee-today-page,
+.admin-employee-today-page * {
+    box-sizing: border-box;
+}
+
+.admin-employee-today-page {
+    min-height: 100vh;
+    padding: 32px 20px;
+    background:
+        radial-gradient(ellipse at top left, #dce9ff 0%, transparent 42%),
+        linear-gradient(135deg, #eef4ff, #f4f2ff);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    color: #172033;
+}
+
+.admin-employee-today {
+    position: relative;
+    width: 100%;
+    max-width: 1050px;
+    margin: 0 auto;
+    padding: 34px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid #e5ebf5;
+    border-radius: 22px;
+    box-shadow: 0 20px 60px rgba(54, 84, 140, 0.12);
+}
+
+.admin-employee-today::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    background: linear-gradient(90deg, #2563eb, #6366f1, #8b5cf6);
+}
+
+.admin-employee-today > button {
+    margin-bottom: 24px;
+    padding: 11px 17px;
+    border: 0;
+    border-radius: 9px;
+    background: #2859ed;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.admin-employee-today > button:hover {
+    background: #1d45c5;
+    transform: translateY(-1px);
+}
+
+.admin-employee-today h1 {
+    margin: 0 0 24px;
+    color: #172033;
+    font-size: clamp(26px, 3vw, 34px);
+    font-weight: 750;
+    letter-spacing: -0.8px;
+}
+
+.admin-employee-today h2 {
+    margin: 0 0 7px;
+    color: #202c43;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.admin-employee-today h3 {
+    margin: 26px 0 15px;
+    color: #202c43;
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.admin-employee-today p {
+    color: #52627b;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.admin-employee-today > div:first-of-type {
+    margin-bottom: 24px;
+    padding: 21px 23px;
+    background: #f8faff;
+    border: 1px solid #e4eaf6;
+    border-radius: 14px;
+}
+
+.admin-employee-today > div:first-of-type p {
+    margin: 6px 0 0;
+}
+
+.admin-employee-today hr {
+    margin: 25px 0;
+    border: 0;
+    border-top: 1px solid #e5eaf3;
+}
+
+/* Summary: Expected hours, Work Session and Break */
+.admin-employee-today > p {
+    display: inline-flex;
+    align-items: center;
+    width: calc(33.333% - 10px);
+    min-height: 76px;
+    margin: 5px 10px 5px 0;
+    padding: 17px;
+    vertical-align: top;
+    background: #e8edff;
+    border: 1px solid #d7e0ff;
+    border-left: 4px solid #4775f5;
+    border-radius: 12px;
+    color: #33446b;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Timeline scrolls independently of the whole page */
+.admin-employee-today .timeline-scroll {
+    height: 350px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: #eef2ff;
+    border: 1px solid #d8e1ff;
+    border-radius: 15px;
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+}
+
+.admin-employee-today .timeline-item {
+    flex-shrink: 0;
+}
+
+.admin-employee-today .timeline-item:hover {
+    border-color: #b9cbff;
+    box-shadow: 0 4px 12px rgba(55, 92, 180, 0.09);
+}
+
+.admin-employee-today .timeline-item strong {
+    color: #263755;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.admin-employee-today .timeline-item p {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 6px 10px;
+    background: #f1f5ff;
+    border-radius: 7px;
+    color: #506384;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-employee-today .timeline-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.admin-employee-today .timeline-scroll::-webkit-scrollbar-track {
+    background: #e2e9ff;
+    border-radius: 10px;
+}
+
+.admin-employee-today .timeline-scroll::-webkit-scrollbar-thumb {
+    background: #9aafea;
+    border-radius: 10px;
+}
+
+.admin-employee-today .timeline-scroll::-webkit-scrollbar-thumb:hover {
+    background: #718bd5;
+}
+
+@media (max-width: 700px) {
+    .admin-employee-today-page {
+        padding: 14px 10px;
+    }
+
+    .admin-employee-today {
+        padding: 22px 17px;
+        border-radius: 16px;
+    }
+
+    .admin-employee-today > p {
+        width: 100%;
+        min-height: 58px;
+        margin-right: 0;
+    }
+
+    .admin-employee-today .timeline-scroll {
+        height: 320px;
+        max-height: 55vh;
+        min-height: 200px;
+        padding: 8px;
+    }
+
+    .admin-employee-today .timeline-item {
+        padding: 13px 11px;
+    }
+
+    .admin-employee-today .timeline-item strong {
+        font-size: 13px;
+    }
+}

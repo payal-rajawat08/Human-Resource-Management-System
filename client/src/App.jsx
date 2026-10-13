@@ -9,6 +9,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Leaves from "./pages/Leaves";
 import AdminRegister from "./pages/AdminRegister";
 import ApplyLeave from "./pages/ApplyLeave";
+import AdminEmployeeToday from "./pages/AdminEmployeeToday";
 function App() {
   return (
     <Routes>
@@ -23,6 +24,8 @@ function App() {
       <Route path="/leaves" element={<Leaves />} />
       <Route path="/admin-register" element={<AdminRegister />} />
       <Route path="/apply-leave" element={<ApplyLeave />} />
+      <Route path="/employee-today" element={<EmployeeToday />} />
+      <Route path="/admin/employee-today/:employeeId" element={<AdminEmployeeToday />}/>
     </Routes>
   );
 }

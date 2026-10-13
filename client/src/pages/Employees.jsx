@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./Employees.css";
 function Employees() {
      const [employees, setEmployees] = useState([]);
+     const navigate = useNavigate();
+    
      useEffect(() => {
         const fetchEmployees = async () => {
             try {
-                const token = localStorage.getItem("token");
+                const token = localStorage.getItem("adminToken");
                 const response = await fetch(
                     "http://localhost:8000/api/admin/employees",
                     {
@@ -51,7 +54,11 @@ function Employees() {
                             <h3>{employee.name}</h3>
                             <h3>{employee.email}</h3>
                         </div>
-                        <button>View Today</button>
+                        <button
+                            onClick={() => navigate(`/admin/employee-today/${employee._id}`)}
+                        >
+                             View Today
+                            </button>
                     </div>
                 ))}
             </div>

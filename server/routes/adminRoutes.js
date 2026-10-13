@@ -14,6 +14,11 @@ import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+console.log("ADMIN ROUTES FILE LOADED");
+router.use((req, res, next) => {
+    console.log("ADMIN ROUTER RECEIVED:", req.method, req.originalUrl);
+    next();
+});
 router.post("/register", async (req, res) => {
     try {
         const adminCount = await Admin.countDocuments();
@@ -256,6 +261,7 @@ router.get("/employees",adminAuthMiddleware,permissionMiddleware("employee.view"
     }
 );
 
+
 router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
     try {
         const start = new Date();
@@ -264,17 +270,43 @@ router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
         const end = new Date();
         end.setHours(23, 59, 59, 999);
 
-        const presentToday = await Attendance.countDocuments({
+        const attendanceRecords = await Attendance.find({
             date: { $gte: start, $lte: end },
-            status: "Present",
-        });
+            status: { $in: ["Present", "PRESENT"] },
+        })
+            .populate("employeeId", "name email")
+            .sort({ startTime: -1 });
 
-        res.status(200).json({ presentToday });
+        const employeeMap = new Map();
+
+        for (const record of attendanceRecords) {
+            const employee = record.employeeId;
+
+            if (employee && !employeeMap.has(employee._id.toString())) {
+                employeeMap.set(employee._id.toString(), {
+                    _id: employee._id,
+                    name: employee.name,
+                    email: employee.email,
+                    startTime: record.startTime,
+                    workMode: record.workMode,
+                });
+            }
+        }
+
+        const presentEmployees = Array.from(employeeMap.values());
+
+        res.status(200).json({
+            presentToday: presentEmployees.length,
+            presentEmployees,
+        });
     } catch (error) {
         console.error("Attendance count error:", error);
-        res.status(500).json({ message: "Failed to fetch attendance" });
+        res.status(500).json({
+            message: "Failed to fetch attendance",
+        });
     }
 });
+
 
 router.post("/employees",adminAuthMiddleware,permissionMiddleware("employee.edit"),async (req, res) => {
         try {
@@ -455,6 +487,7 @@ router.post("/leaves", authMiddleware, async (req, res) => {
 });
 
 router.get("/employees/:employeeId/today",adminAuthMiddleware,async (req, res) => {
+    console.log("ADMIN EMPLOYEE TODAY ROUTE HIT");
         try {
             const { employeeId } = req.params;
 
@@ -486,6 +519,12 @@ router.get("/employees/:employeeId/today",adminAuthMiddleware,async (req, res) =
                 },
             }).sort({ startedAt: -1 });
 
+            const breaks = await Break.find({
+                employeeId,
+                sessionId: {
+                    $in: sessions.map((session) => session._id),
+                },}).sort({ startedAt: -1 });
+
             const activeSession = sessions.find(
                 (session) => session.status === "open"
             ) || null;
@@ -506,6 +545,7 @@ router.get("/employees/:employeeId/today",adminAuthMiddleware,async (req, res) =
             res.status(200).json({
                 employee,
                 sessions,
+                breaks,
                 session: activeSession,
                 break: activeBreak,
                 expectedToday,

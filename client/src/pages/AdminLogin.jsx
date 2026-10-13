@@ -30,8 +30,7 @@ function AdminLogin() {
                 alert(data.message || "Login failed");
                 return;
             }
-
-            localStorage.setItem("token", data.token);
+            localStorage.setItem("adminToken", data.token);
             localStorage.setItem("adminName", data.admin.name);
 
             navigate("/admin-dashboard");
