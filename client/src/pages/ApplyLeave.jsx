@@ -1,6 +1,7 @@
 import { useState , useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./ApplyLeave.css";
+import { io } from "socket.io-client";
 function ApplyLeave() {
     const [leaveType, setLeaveType] = useState("Casual Leave");
     const [startDate, setStartDate] = useState("");
@@ -31,9 +32,22 @@ function ApplyLeave() {
             console.error("Error fetching my leaves:", error);
         }
     };
-
+    
     fetchMyLeaves();
-}, []);
+    const socket = io("http://localhost:8000");
+    const employeeId = localStorage.getItem("employeeId");
+    const handleLeaveUpdated = (data) => {
+        if (String(data.employeeId) !== String(employeeId)) {
+            return;
+        }
+        fetchMyLeaves();
+    };
+    socket.on("leave-updated", handleLeaveUpdated);
+    return () => {
+        socket.off("leave-updated", handleLeaveUpdated);
+        socket.disconnect();
+    };
+},[]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();

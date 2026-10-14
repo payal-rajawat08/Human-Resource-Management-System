@@ -12,13 +12,123 @@ import WorkSession from "../models/WorkSession.js";
 import Break from "../models/Break.js";
 import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import ShareEvent from "../models/ShareEvent.js";
 
 const router = express.Router();
-console.log("ADMIN ROUTES FILE LOADED");
-router.use((req, res, next) => {
-    console.log("ADMIN ROUTER RECEIVED:", req.method, req.originalUrl);
-    next();
-});
+function calculateNetWorkingMilliseconds(
+    session,
+    breaks,
+    shareEvents,
+    dayStart,
+    dayEnd
+) {
+    const now = Date.now();
+
+    const sessionStart = Math.max(
+        new Date(session.startedAt).getTime(),
+        dayStart.getTime()
+    );
+
+    let sessionEnd = session.endedAt
+        ? new Date(session.endedAt).getTime()
+        : session.status === "open"
+        ? now
+        : session.lastHeartbeatAt
+        ? new Date(session.lastHeartbeatAt).getTime()
+        : now;
+
+    sessionEnd = Math.min(
+        sessionEnd,
+        dayEnd.getTime(),
+        now
+    );
+
+    if (sessionEnd <= sessionStart) {
+        return 0;
+    }
+
+    const excludedIntervals = [];
+
+    for (const breakRecord of breaks) {
+        const breakStart = new Date(
+            breakRecord.startedAt
+        ).getTime();
+
+        const breakEnd = breakRecord.endedAt
+            ? new Date(breakRecord.endedAt).getTime()
+            : sessionEnd;
+
+        excludedIntervals.push({
+            start: Math.max(breakStart, sessionStart),
+            end: Math.min(breakEnd, sessionEnd),
+        });
+    }
+
+  
+    let noShareStart = null;
+
+    for (const event of shareEvents) {
+        const eventTime = new Date(event.at).getTime();
+
+        if (
+            ["stopped", "track_ended", "sfu_left"].includes(event.type)
+        ) {
+            if (noShareStart === null) {
+                noShareStart = eventTime;
+            }
+        } else if (
+            ["started", "sfu_joined"].includes(event.type)
+        ) {
+            if (noShareStart !== null) {
+                excludedIntervals.push({
+                    start: Math.max(noShareStart, sessionStart),
+                    end: Math.min(eventTime, sessionEnd),
+                });
+
+                noShareStart = null;
+            }
+        }
+    }
+
+    if (noShareStart !== null) {
+        excludedIntervals.push({
+            start: Math.max(noShareStart, sessionStart),
+            end: sessionEnd,
+        });
+    }
+
+
+    const intervals = excludedIntervals
+        .filter(({ start, end }) => end > start)
+        .sort((a, b) => a.start - b.start);
+
+    let excludedMs = 0;
+    let mergedStart = null;
+    let mergedEnd = null;
+
+    for (const interval of intervals) {
+        if (mergedStart === null) {
+            mergedStart = interval.start;
+            mergedEnd = interval.end;
+        } else if (interval.start <= mergedEnd) {
+            mergedEnd = Math.max(mergedEnd, interval.end);
+        } else {
+            excludedMs += mergedEnd - mergedStart;
+            mergedStart = interval.start;
+            mergedEnd = interval.end;
+        }
+    }
+
+    if (mergedStart !== null) {
+        excludedMs += mergedEnd - mergedStart;
+    }
+
+    return Math.max(
+        0,
+        sessionEnd - sessionStart - excludedMs
+    );
+}
+
 router.post("/register", async (req, res) => {
     try {
         const adminCount = await Admin.countDocuments();
@@ -270,12 +380,31 @@ router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
         const end = new Date();
         end.setHours(23, 59, 59, 999);
 
+        const approvedLeaves = await Leave.find({
+            status: "Approved",
+            startDate: { $lte: end },
+            endDate: { $gte: start },
+        }).populate("employeeId", "name email");
+
         const attendanceRecords = await Attendance.find({
             date: { $gte: start, $lte: end },
             status: { $in: ["Present", "PRESENT"] },
         })
             .populate("employeeId", "name email")
-            .sort({ startTime: -1 });
+            .sort({ startTime: 1 });
+            const sessions = await WorkSession.find({
+                startedAt: { $lte: end },
+                $or: [
+                    { endedAt: null },
+                    { endedAt: { $gte: start } },
+                ],
+            });
+            const sessionIds = sessions.map((session) => session._id);
+            const [breaks, shareEvents] = await Promise.all([
+                Break.find({ sessionId: { $in: sessionIds } }),
+                ShareEvent.find({ sessionId: { $in: sessionIds } })
+                .sort({ at: 1 }),
+            ]);
 
         const employeeMap = new Map();
 
@@ -289,8 +418,47 @@ router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
                     email: employee.email,
                     startTime: record.startTime,
                     workMode: record.workMode,
+                    netWorkingMilliseconds: 0,
                 });
             }
+        }
+        for (const session of sessions) {
+            const employee = employeeMap.get(
+                session.employeeId.toString()
+            );
+
+            if (!employee) continue;
+            const sessionBreaks = breaks.filter(
+                (item) => String(item.sessionId) === String(session._id)
+            );
+            const hasActiveBreak = sessionBreaks.some(
+                (item) => !item.endedAt
+            );
+            employee.isTimerRunning = Boolean(
+                employee.isTimerRunning ||
+                (
+                    session.status === "open" &&
+                    session.shareActive &&
+                    !hasActiveBreak
+                )
+            );
+            const sessionShareEvents = shareEvents.filter(
+                (item) => String(item.sessionId) === String(session._id)
+            );
+            employee.netWorkingMilliseconds +=
+            calculateNetWorkingMilliseconds(
+                session,
+                sessionBreaks,
+                sessionShareEvents,
+                start,
+                end
+            );
+        }
+        for (const employee of employeeMap.values()) {
+            employee.netWorkingHours = Number(
+                (employee.netWorkingMilliseconds / 3600000).toFixed(2)
+            );
+            employee.calculatedAt = Date.now();
         }
 
         const presentEmployees = Array.from(employeeMap.values());
@@ -298,7 +466,15 @@ router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
         res.status(200).json({
             presentToday: presentEmployees.length,
             presentEmployees,
-        });
+            leaveEmployees: approvedLeaves
+        .filter((leave) => leave.employeeId)
+        .map((leave) => ({
+            _id: leave.employeeId._id,
+            name: leave.employeeId.name,
+            email: leave.employeeId.email,
+            status: "Leave",
+        })),
+});
     } catch (error) {
         console.error("Attendance count error:", error);
         res.status(500).json({
@@ -326,6 +502,11 @@ router.post("/employees",adminAuthMiddleware,permissionMiddleware("employee.edit
                 name,
                 email,
                 password: hashedPassword,
+            });
+
+            req.io.emit("employee-updated", {
+                employeeId: employee._id.toString(),
+                eventType: "created",
             });
 
             res.status(201).json({
@@ -361,6 +542,10 @@ router.put("/employees/:id",adminAuthMiddleware,permissionMiddleware("employee.e
                     message: "Employee not found",
                 });
             }
+            req.io.emit("employee-updated", {
+                employeeId: employee._id.toString(),
+                eventType: "updated",
+            });
 
             res.status(200).json({
                 message: "Employee updated successfully",
@@ -384,6 +569,11 @@ router.delete("/employees/:id",adminAuthMiddleware,permissionMiddleware("employe
                     message: "Employee not found",
                 });
             }
+
+            req.io.emit("employee-updated", {
+                employeeId: req.params.id,
+                eventType: "deleted",
+            });
 
             res.status(200).json({
                 message: "Employee deleted successfully",
@@ -433,6 +623,10 @@ router.put("/leaves/:id", adminAuthMiddleware, async (req, res) => {
                 message: "Leave request not found",
             });
         }
+        req.io.emit("leave-updated", {
+            employeeId: leave.employeeId.toString(),
+            eventType: status.toLowerCase(),
+        });
 
         res.status(200).json({
             message: "Leave status updated successfully",
@@ -472,6 +666,10 @@ router.post("/leaves", authMiddleware, async (req, res) => {
             startDate,
             endDate,
             reason,
+        });
+        req.io.emit("leave-updated", {
+            employeeId: req.employeeId.toString(),
+            eventType: "applied",
         });
 
         res.status(201).json({

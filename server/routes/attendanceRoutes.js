@@ -41,7 +41,15 @@ router.post("/sessions/start", authMiddleware, async (req, res) => {
     existingSession.endReason = "new_session";
 
     await existingSession.save();
-}
+    const existingAttendance = await Attendance.findOne({
+    employeeId,
+    endTime: null,
+    }).sort({ startTime: -1 });
+    if (existingAttendance) {
+    existingAttendance.endTime = endTime;
+    await existingAttendance.save();
+    }
+    }
     const officeIp = await OfficeIp.findOne({active:true});
     if(!officeIp){
         return res.status(404).json({
@@ -242,7 +250,7 @@ if (!workSession) {
 const shareEvent = await ShareEvent.create({
     sessionId,
     type,
-    detail,
+    details: detail,
 });
 if (type === "stopped" || type === "track_ended") {
     workSession.shareActive = false;
@@ -251,6 +259,14 @@ if (type === "stopped" || type === "track_ended") {
 if (type === "started") {
     workSession.shareActive = true;
     await workSession.save();
+}
+if (["started", "stopped", "track_ended"].includes(type)) {
+    req.io.emit("work-session-updated", {
+        employeeId: req.employeeId.toString(),
+        eventType: type === "started"
+            ? "sharing-resumed"
+            : "sharing-stopped",
+    });
 }
 res.status(201).json({
         message: "Share event recorded successfully",

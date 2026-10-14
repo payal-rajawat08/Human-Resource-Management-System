@@ -10,6 +10,7 @@ import Leaves from "./pages/Leaves";
 import AdminRegister from "./pages/AdminRegister";
 import ApplyLeave from "./pages/ApplyLeave";
 import AdminEmployeeToday from "./pages/AdminEmployeeToday";
+import Attendance from "./pages/Attendance";
 function App() {
   return (
     <Routes>
@@ -26,6 +27,7 @@ function App() {
       <Route path="/apply-leave" element={<ApplyLeave />} />
       <Route path="/employee-today" element={<EmployeeToday />} />
       <Route path="/admin/employee-today/:employeeId" element={<AdminEmployeeToday />}/>
+      <Route path="/attendance" element={<Attendance />} />
     </Routes>
   );
 }

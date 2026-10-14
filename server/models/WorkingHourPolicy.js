@@ -17,6 +17,41 @@ const workingHourPolicySchema = new mongoose.Schema({
         default: null,
     },
 
+    graceMinutesPerDay: {
+        type: Number,
+        default: 0,
+    },
+
+    toleranceHoursPerMonth: {
+        type: Number,
+        default: 0,
+    },
+
+    halfDayThresholdHours: {
+        type: Number,
+        default: null,
+    },
+
+    absentThresholdHours: {
+        type: Number,
+        default: null,
+    },
+
+    maxBreakMinutesPerDay: {
+        type: Number,
+        default: null,
+    },
+
+    countNoShareTime: {
+        type: Boolean,
+        default: false,
+    },
+
+    requireScreenShare: {
+        type: Boolean,
+        default: true,
+    },
+
     workingDays: {
         type: [Number],
         required: true,

@@ -3,6 +3,7 @@ import "./AdminDashboard.css";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { io } from "socket.io-client";
 
 function AdminDashboard() {
     const navigate = useNavigate();
@@ -11,7 +12,6 @@ function AdminDashboard() {
     const [presentToday, setPresentToday] = useState(0);
     const [onLeave, setOnLeave] = useState(0);
     const [pendingRequests, setPendingRequests] = useState(0);
-
     const [employees, setEmployees] = useState([]);
     const [leaves, setLeaves] = useState([]);
     const [presentEmployees, setPresentEmployees] = useState([]);
@@ -100,10 +100,30 @@ function AdminDashboard() {
                 console.error("Error fetching leaves:", error);
             }
         };
+        const socket = io("http://localhost:8000");
 
+        const handleLeaveUpdated = () => {
+            fetchLeaves();
+        };
+
+        const handleWorkSessionUpdated = () => {
+            fetchAttendance();
+        };
+        socket.on("leave-updated", handleLeaveUpdated);
+        socket.on("work-session-updated", handleWorkSessionUpdated);
+        const handleEmployeeUpdated = () => {
+            fetchEmployees();
+        };
+        socket.on("employee-updated", handleEmployeeUpdated);
         fetchEmployees();
         fetchAttendance();
         fetchLeaves();
+        return () => {
+            socket.off("leave-updated", handleLeaveUpdated);
+            socket.off("work-session-updated", handleWorkSessionUpdated);
+            socket.off("employee-updated", handleEmployeeUpdated);
+            socket.disconnect();
+        };
     }, []);
 
     const getModalTitle = () => {
@@ -154,9 +174,8 @@ function AdminDashboard() {
                 <nav>
                     <p className="active">📊 Dashboard</p>
                     <Link to="/employees">👥 Employees</Link>
-                    <p>🕒 Attendance</p>
+                    <Link to="/attendance">🕒 Attendance</Link>
                     <Link to="/leaves">📅 Leaves</Link>
-                    <p>🔐 Roles &amp; Permissions</p>
                 </nav>
             </aside>
 

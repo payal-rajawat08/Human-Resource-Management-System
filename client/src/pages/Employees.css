@@ -159,3 +159,81 @@
         width: 100%;
     }
 }
+
+.add-employee-form {
+    max-width: 560px;
+    margin: 24px 0;
+    padding: 25px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.06);
+}
+
+.add-employee-form h2 {
+    margin: 0 0 22px;
+    color: #1e293b;
+    font-size: 21px;
+}
+
+.add-employee-form form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.add-employee-form label {
+    margin-top: 6px;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.add-employee-form input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.add-employee-form input:focus {
+    outline: 2px solid #bfdbfe;
+    border-color: #3b82f6;
+}
+
+.employee-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.employee-form-actions button {
+    padding: 11px 16px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.employee-form-actions button:last-child {
+    background: #2563eb;
+    color: white;
+}
+
+.employee-form-actions button:first-child {
+    background: #e2e8f0;
+    color: #334155;
+}
+
+.employee-form-actions button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.employee-form-error {
+    color: #dc2626;
+    font-size: 13px;
+}
