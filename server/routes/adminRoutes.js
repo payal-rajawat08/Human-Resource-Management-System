@@ -15,6 +15,35 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import ShareEvent from "../models/ShareEvent.js";
 
 const router = express.Router();
+async function requireSuperAdmin(req, res, next) {
+    try {
+        const admin = await Admin.findById(req.adminId).populate("role");
+
+        if (!admin || !admin.isActive) {
+            return res.status(403).json({
+                message: "Account inactive or not found",
+            });
+        }
+
+        const roleName = String(admin.role?.name || "")
+            .toLowerCase()
+            .replace(/[\s_-]/g, "");
+
+        if (roleName !== "superadmin") {
+            return res.status(403).json({
+                message: "Only Super Admin can manage Admin accounts",
+            });
+        }
+
+        req.currentAdmin = admin;
+        next();
+    } catch (error) {
+        console.error("Super Admin verification error:", error);
+        return res.status(500).json({
+            message: "Failed to verify Super Admin",
+        });
+    }
+}
 function calculateNetWorkingMilliseconds(
     session,
     breaks,
@@ -129,51 +158,11 @@ function calculateNetWorkingMilliseconds(
     );
 }
 
-router.post("/register", async (req, res) => {
-    try {
-        const adminCount = await Admin.countDocuments();
-        if (adminCount > 0) {
-            return res.status(403).json({
-                message: "Admin registration is disabled",
-            });
-        }
-        const { name, email, password } = req.body;
-
-        const existingAdmin = await Admin.findOne({ email });
-
-        if (existingAdmin) {
-            return res.status(400).json({
-                message: "Admin already exists",
-            });
-        }
-        const hashedPassword = await bcrypt.hash(password, 10);
-        let adminRole = await Role.findOne({ name: "admin" });
-        if (!adminRole) {
-            adminRole = await Role.create({
-                name: "admin",
-                permissions: [
-                    "employee.view",
-                    "employee.edit"
-                ],
-            });
-        }
-        const admin = await Admin.create({
-            name,
-            email,
-            password: hashedPassword,
-            role: adminRole._id,
-        });
-        res.status(201).json({
-            message: "Admin registered successfully",
-            adminId: admin._id,
-        });
-    } catch (error) {
-        console.error("Admin register error:", error);
-        res.status(500).json({
-            message: "Failed to register admin",
-        });
-    }
-});
+router.post("/register", (req, res) => {
+    return res.status(403).json({
+        message: "Admin accounts can only be created by Super Admin",
+    });
+}); 
 
 router.post("/login", async (req, res) => {
     try {
@@ -239,7 +228,7 @@ router.get("/test-employee-edit",adminAuthMiddleware,permissionMiddleware("emplo
     }
 );
 
-router.post("/roles", adminAuthMiddleware, async (req, res) => {
+router.post("/roles", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
     try {
         const { name, permissions } = req.body;
 
@@ -260,7 +249,7 @@ router.post("/roles", adminAuthMiddleware, async (req, res) => {
     }
 });
 
-router.get("/roles", adminAuthMiddleware, async (req, res) => {
+router.get("/roles", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
     try {
         const roles = await Role.find();
 
@@ -275,28 +264,58 @@ router.get("/roles", adminAuthMiddleware, async (req, res) => {
     }
 });
 
-router.delete("/roles/:id", adminAuthMiddleware, async (req, res) => {
-    try {
-        const role = await Role.findByIdAndDelete(req.params.id);
+router.delete(
+    "/roles/:id",
+    adminAuthMiddleware,
+    requireSuperAdmin,
+    async (req, res) => {
+        try {
+            const role = await Role.findById(req.params.id);
 
-        if (!role) {
-            return res.status(404).json({
-                message: "Role not found",
+            if (!role) {
+                return res.status(404).json({
+                    message: "Role not found",
+                });
+            }
+
+            const roleName = String(role.name || "")
+                .toLowerCase()
+                .replace(/[\s_-]/g, "");
+
+            if (["admin", "superadmin"].includes(roleName)) {
+                return res.status(403).json({
+                    message: "Main system roles cannot be deleted",
+                });
+            }
+
+            const assignedAdmins = await Admin.countDocuments({
+                role: role._id,
+            });
+
+            if (assignedAdmins > 0) {
+                return res.status(409).json({
+                    message:
+                        "This role is assigned to Admin accounts. Reassign those accounts first.",
+                });
+            }
+
+            await Role.findByIdAndDelete(role._id);
+
+            return res.status(200).json({
+                message: "Role deleted successfully",
+            });
+        } catch (error) {
+            console.error("Delete role error:", error);
+
+            return res.status(500).json({
+                message: "Failed to delete role",
             });
         }
-
-        res.status(200).json({
-            message: "Role deleted successfully",
-        });
-    } catch (error) {
-        console.error("Delete role error:", error);
-        res.status(500).json({
-            message: "Failed to delete role",
-        });
     }
-});
+);
 
-router.put("/admins/:id/role", adminAuthMiddleware, async (req, res) => {
+
+router.put("/admins/:id/role", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
     try {
         const { roleId } = req.body;
 
@@ -326,7 +345,7 @@ router.put("/admins/:id/role", adminAuthMiddleware, async (req, res) => {
     }
 });
 
-router.put("/roles/:id", adminAuthMiddleware, async (req, res) => {
+router.put("/roles/:id", adminAuthMiddleware,requireSuperAdmin, async (req, res) => {
     try {
         const { name, permissions } = req.body;
 
@@ -354,7 +373,7 @@ router.put("/roles/:id", adminAuthMiddleware, async (req, res) => {
     }
 });
 
-router.get("/employees",adminAuthMiddleware,permissionMiddleware("employee.view"),
+router.get("/employees",adminAuthMiddleware,permissionMiddleware("employees.view"),
     async (req, res) => {
         try {
             const employees = await Employee.find().select("-password");
@@ -372,7 +391,7 @@ router.get("/employees",adminAuthMiddleware,permissionMiddleware("employee.view"
 );
 
 
-router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
+router.get("/attendance/today", adminAuthMiddleware, permissionMiddleware("attendance.view"), async (req, res) => {
     try {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -484,7 +503,7 @@ router.get("/attendance/today", adminAuthMiddleware, async (req, res) => {
 });
 
 
-router.post("/employees",adminAuthMiddleware,permissionMiddleware("employee.edit"),async (req, res) => {
+router.post("/employees",adminAuthMiddleware,permissionMiddleware("employees.create"),async (req, res) => {
         try {
             const { name, email, password } = req.body;
 
@@ -526,7 +545,7 @@ router.post("/employees",adminAuthMiddleware,permissionMiddleware("employee.edit
     }
 );
 
-router.put("/employees/:id",adminAuthMiddleware,permissionMiddleware("employee.edit"),
+router.put("/employees/:id",adminAuthMiddleware,permissionMiddleware("employees.edit"),
     async (req, res) => {
         try {
             const { name, email } = req.body;
@@ -587,7 +606,7 @@ router.delete("/employees/:id",adminAuthMiddleware,permissionMiddleware("employe
     }
 );
 
-router.get("/leaves", adminAuthMiddleware, async (req, res) => {
+router.get("/leaves", adminAuthMiddleware, permissionMiddleware("leaves.manage"),async (req, res) => {
     try {
         const leaves = await Leave.find()
             .populate("employeeId", "name email")
@@ -602,7 +621,7 @@ router.get("/leaves", adminAuthMiddleware, async (req, res) => {
     }
 });
 
-router.put("/leaves/:id", adminAuthMiddleware, async (req, res) => {
+router.put("/leaves/:id", adminAuthMiddleware, permissionMiddleware("leaves.manage"), async (req, res) => {
     try {
         const { status } = req.body;
 
@@ -684,7 +703,7 @@ router.post("/leaves", authMiddleware, async (req, res) => {
     }
 });
 
-router.get("/employees/:employeeId/today",adminAuthMiddleware,async (req, res) => {
+router.get("/employees/:employeeId/today", adminAuthMiddleware, permissionMiddleware("attendance.view"), async (req, res) => {
     console.log("ADMIN EMPLOYEE TODAY ROUTE HIT");
         try {
             const { employeeId } = req.params;
@@ -756,4 +775,307 @@ router.get("/employees/:employeeId/today",adminAuthMiddleware,async (req, res) =
         }
     }
 );
+router.get("/me", adminAuthMiddleware, async (req, res) => {
+    try {
+        const admin = await Admin.findById(req.adminId)
+            .populate("role", "name permissions")
+            .select("name email role permissions");
+
+        if (!admin) {
+            return res.status(404).json({
+                message: "Admin not found",
+            });
+        }
+
+        res.json({
+            admin: {
+                id: admin._id,
+                name: admin.name,
+                email: admin.email,
+                role: admin.role?.name || null,
+                permissions: Array.isArray(admin.permissions)
+                ? admin.permissions
+                : (admin.role?.permissions || []),
+            },
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to fetch admin details",
+        });
+    }
+});
+// List Admin accounts — Super Admin only
+router.get(
+    "/admins",
+    adminAuthMiddleware,
+    requireSuperAdmin,
+    async (req, res) => {
+        try {
+            const adminRole = await Role.findOne({
+                name: /^admin$/i,
+            });
+
+            if (!adminRole) {
+                return res.status(200).json({ admins: [] });
+            }
+
+            const admins = await Admin.find({
+                role: adminRole._id,
+            })
+                .select("name email role permissions isActive createdAt")
+                .populate("role", "name permissions")
+                .sort({ createdAt: -1 });
+
+            const result = admins.map((admin) => ({
+                ...admin.toObject(),
+                permissions: Array.isArray(admin.permissions)
+                    ? admin.permissions
+                    : (admin.role?.permissions || []),
+            }));
+
+            return res.status(200).json({ admins: result });
+        } catch (error) {
+            console.error("List admins error:", error);
+            return res.status(500).json({
+                message: "Failed to fetch Admin accounts",
+            });
+        }
+    }
+);
+
+
+// Create Admin — Super Admin only
+router.post(
+    "/admins",
+    adminAuthMiddleware,
+    requireSuperAdmin,
+    async (req, res) => {
+        try {
+            const { name, email, password, permissions } = req.body;
+
+            if (
+                !name?.trim() ||
+                !email?.trim() ||
+                !password
+            ) {
+                return res.status(400).json({
+                    message: "Name, email and password are required",
+                });
+            }
+
+            if (password.length < 8) {
+                return res.status(400).json({
+                    message: "Password must contain at least 8 characters",
+                });
+            }
+
+            if (
+                permissions !== undefined &&
+                (!Array.isArray(permissions) ||
+                    permissions.some((p) => typeof p !== "string"))
+            ) {
+                return res.status(400).json({
+                    message: "Permissions must be an array of strings",
+                });
+            }
+
+            const normalizedEmail = email.trim().toLowerCase();
+
+            const existingAdmin = await Admin.findOne({
+                email: normalizedEmail,
+            });
+
+            if (existingAdmin) {
+                return res.status(409).json({
+                    message: "This email is already registered",
+                });
+            }
+
+            const existingEmployee = await Employee.findOne({
+                email: normalizedEmail,
+            });
+
+            if (existingEmployee) {
+                return res.status(409).json({
+                    message: "This email already belongs to an Employee",
+                });
+            }
+
+            const adminRole = await Role.findOne({
+                name: /^admin$/i,
+            });
+
+            if (!adminRole) {
+                return res.status(500).json({
+                    message: "Admin role not found",
+                });
+            }
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+
+            const adminData = {
+                name: name.trim(),
+                email: normalizedEmail,
+                password: hashedPassword,
+                role: adminRole._id,
+                isActive: true,
+            };
+
+            if (Array.isArray(permissions)) {
+                adminData.permissions = [
+                    ...new Set(
+                        permissions
+                            .map((p) => p.trim())
+                            .filter(Boolean)
+                    ),
+                ];
+            }
+
+            const createdAdmin = await Admin.create(adminData);
+
+            const safeAdmin = await Admin.findById(createdAdmin._id)
+                .select("name email role permissions isActive createdAt")
+                .populate("role", "name permissions");
+
+            return res.status(201).json({
+                message: "Admin created successfully",
+                admin: {
+                    ...safeAdmin.toObject(),
+                    permissions: Array.isArray(safeAdmin.permissions)
+                        ? safeAdmin.permissions
+                        : (safeAdmin.role?.permissions || []),
+                },
+            });
+        } catch (error) {
+            console.error("Create Admin error:", error);
+
+            if (error.code === 11000) {
+                return res.status(409).json({
+                    message: "This email is already registered",
+                });
+            }
+
+            return res.status(500).json({
+                message: "Failed to create Admin",
+            });
+        }
+    }
+);
+
+
+// Delete Admin — Super Admin only
+router.delete(
+    "/admins/:id",
+    adminAuthMiddleware,
+    requireSuperAdmin,
+    async (req, res) => {
+        try {
+            const admin = await Admin.findById(req.params.id)
+                .populate("role", "name");
+
+            if (!admin) {
+                return res.status(404).json({
+                    message: "Admin not found",
+                });
+            }
+
+            const targetRole = String(admin.role?.name || "")
+                .toLowerCase()
+                .replace(/[\s_-]/g, "");
+
+            if (targetRole !== "admin") {
+                return res.status(403).json({
+                    message: "Only Admin accounts can be deleted here",
+                });
+            }
+
+            await Admin.findByIdAndDelete(admin._id);
+
+            return res.status(200).json({
+                message: "Admin deleted successfully",
+            });
+        } catch (error) {
+            console.error("Delete Admin error:", error);
+
+            if (error.name === "CastError") {
+                return res.status(400).json({
+                    message: "Invalid Admin ID",
+                });
+            }
+
+            return res.status(500).json({
+                message: "Failed to delete Admin",
+            });
+        }
+    }
+);
+// Update an Admin's permissions — Super Admin only
+router.put(
+    "/admins/:id/permissions",
+    adminAuthMiddleware,
+    requireSuperAdmin,
+    async (req, res) => {
+        try {
+            const { permissions } = req.body;
+
+            const allowedPermissions = [
+                "employees.view",
+                "employees.create",
+                "employees.edit",
+                "employee.edit",
+                "attendance.view",
+                "leaves.manage",
+            ];
+
+            if (
+                !Array.isArray(permissions) ||
+                permissions.some(
+                    (permission) =>
+                        typeof permission !== "string" ||
+                        !allowedPermissions.includes(permission)
+                )
+            ) {
+                return res.status(400).json({
+                    message: "Invalid permissions supplied",
+                });
+            }
+
+            const admin = await Admin.findById(req.params.id)
+                .populate("role", "name");
+
+            if (!admin) {
+                return res.status(404).json({
+                    message: "Admin not found",
+                });
+            }
+
+            const roleName = String(admin.role?.name || "")
+                .toLowerCase()
+                .replace(/[\s_-]/g, "");
+
+            // Never modify a Super Admin through this endpoint
+            if (roleName !== "admin") {
+                return res.status(403).json({
+                    message: "Only regular Admin permissions can be edited",
+                });
+            }
+
+            admin.permissions = [...new Set(permissions)];
+            await admin.save();
+
+            return res.status(200).json({
+                message: "Admin permissions updated successfully",
+                permissions: admin.permissions,
+            });
+        } catch (error) {
+            console.error("Update Admin permissions error:", error);
+
+            return res.status(500).json({
+                message: "Failed to update Admin permissions",
+            });
+        }
+    }
+);
+
 export default router;
+

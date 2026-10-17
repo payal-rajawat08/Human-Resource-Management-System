@@ -1,30 +1,80 @@
-
 import "./AdminDashboard.css";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 
 function AdminDashboard() {
     const navigate = useNavigate();
+    const location = useLocation();
 
     const [totalEmployees, setTotalEmployees] = useState(0);
     const [presentToday, setPresentToday] = useState(0);
     const [onLeave, setOnLeave] = useState(0);
     const [pendingRequests, setPendingRequests] = useState(0);
+
     const [employees, setEmployees] = useState([]);
     const [leaves, setLeaves] = useState([]);
     const [presentEmployees, setPresentEmployees] = useState([]);
     const [selectedCard, setSelectedCard] = useState(null);
+    const [adminPermissions, setAdminPermissions] = useState([]);
+
+    // Read login details from the current browser tab
+    const token = sessionStorage.getItem("adminToken");
+    const adminName = sessionStorage.getItem("adminName") || "Admin";
+    const role = sessionStorage.getItem("userRole");
 
     const handleLogout = () => {
-        localStorage.removeItem("adminToken");
-        localStorage.removeItem("adminName");
-        navigate("/admin-login");
+        [
+            "token",
+            "adminToken",
+            "employeeId",
+            "employeeName",
+            "adminName",
+            "userRole",
+            "userPermissions",
+        ].forEach((key) => sessionStorage.removeItem(key));
+
+        navigate("/login", { replace: true });
     };
 
     useEffect(() => {
-        const token = localStorage.getItem("adminToken");
+        if (!token || role !== "admin") {
+            navigate("/login", { replace: true });
+            return;
+        }
+
+        const fetchDashboard = async () => {
+            try {
+                const response = await axios.get(
+                    "http://localhost:8000/api/admin/me",
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+
+                setAdminPermissions(
+                    response.data.admin.permissions || []
+                );
+            } catch (error) {
+                console.error(
+                    "Permission fetch error:",
+                    error.response?.data || error.message
+                );
+
+                if (error.response?.status === 401) {
+                    handleLogout();
+                }
+            }
+        };
+
+        fetchDashboard();
+    }, [token, role, navigate]);
+
+    useEffect(() => {
+        if (!token || role !== "admin") return;
 
         const headers = {
             Authorization: `Bearer ${token}`,
@@ -37,12 +87,14 @@ function AdminDashboard() {
                     { headers }
                 );
 
-                const employeeList = response.data.employees || [];
-
-                setEmployees(employeeList);
-                setTotalEmployees(employeeList.length);
+                const list = response.data.employees || [];
+                setEmployees(list);
+                setTotalEmployees(list.length);
             } catch (error) {
-                console.error("Error fetching employees:", error);
+                console.error(
+                    "Fetch employees failed:",
+                    error.response?.data || error.message
+                );
             }
         };
 
@@ -58,7 +110,10 @@ function AdminDashboard() {
                     response.data.presentEmployees || []
                 );
             } catch (error) {
-                console.error("Error fetching attendance:", error);
+                console.error(
+                    "Fetch attendance failed:",
+                    error.response?.data || error.message
+                );
             }
         };
 
@@ -69,62 +124,79 @@ function AdminDashboard() {
                     { headers }
                 );
 
-                const leaveList = response.data.leaves || [];
+                const list = response.data.leaves || [];
+                setLeaves(list);
+
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
 
                 const tomorrow = new Date(today);
                 tomorrow.setDate(tomorrow.getDate() + 1);
 
-                setLeaves(leaveList);
-
-                const approvedLeaves = leaveList.filter((leave) => {
-                    const startDate = new Date(leave.startDate);
-                    const endDate = new Date(leave.endDate);
+                const approved = list.filter((leave) => {
+                    const start = new Date(leave.startDate);
+                    const end = new Date(leave.endDate);
 
                     return (
                         leave.status === "Approved" &&
-                        startDate < tomorrow &&
-                        endDate >= today
+                        start < tomorrow &&
+                        end >= today
                     );
                 });
 
-                setOnLeave(approvedLeaves.length);
+                setOnLeave(approved.length);
 
                 setPendingRequests(
-                    leaveList.filter(
+                    list.filter(
                         (leave) => leave.status === "Pending"
                     ).length
                 );
             } catch (error) {
-                console.error("Error fetching leaves:", error);
+                console.error(
+                    "Fetch leaves failed:",
+                    error.response?.data || error.message
+                );
             }
         };
-        const socket = io("http://localhost:8000");
 
-        const handleLeaveUpdated = () => {
-            fetchLeaves();
-        };
-
-        const handleWorkSessionUpdated = () => {
-            fetchAttendance();
-        };
-        socket.on("leave-updated", handleLeaveUpdated);
-        socket.on("work-session-updated", handleWorkSessionUpdated);
-        const handleEmployeeUpdated = () => {
-            fetchEmployees();
-        };
-        socket.on("employee-updated", handleEmployeeUpdated);
         fetchEmployees();
         fetchAttendance();
         fetchLeaves();
+
+        const socket = io("http://localhost:8000");
+
+        socket.on("employee-updated", fetchEmployees);
+        socket.on("work-session-updated", fetchAttendance);
+        socket.on("leave-updated", fetchLeaves);
+
         return () => {
-            socket.off("leave-updated", handleLeaveUpdated);
-            socket.off("work-session-updated", handleWorkSessionUpdated);
-            socket.off("employee-updated", handleEmployeeUpdated);
+            socket.off("employee-updated", fetchEmployees);
+            socket.off("work-session-updated", fetchAttendance);
+            socket.off("leave-updated", fetchLeaves);
             socket.disconnect();
         };
-    }, []);
+    }, [token, role]);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const approvedLeaveList = leaves.filter((leave) => {
+        const start = new Date(leave.startDate);
+        const end = new Date(leave.endDate);
+
+        return (
+            leave.status === "Approved" &&
+            start < tomorrow &&
+            end >= today
+        );
+    });
+
+    const pendingLeaveList = leaves.filter(
+        (leave) => leave.status === "Pending"
+    );
 
     const getModalTitle = () => {
         switch (selectedCard) {
@@ -141,30 +213,12 @@ function AdminDashboard() {
         }
     };
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const closeModal = () => setSelectedCard(null);
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const approvedLeaveList = leaves.filter((leave) => {
-        const startDate = new Date(leave.startDate);
-        const endDate = new Date(leave.endDate);
-
-        return (
-            leave.status === "Approved" &&
-            startDate < tomorrow &&
-            endDate >= today
-        );
-    });
-
-    const pendingLeaveList = leaves.filter(
-        (leave) => leave.status === "Pending"
-    );
-
-    const closeModal = () => {
-        setSelectedCard(null);
-    };
+    // Prevent another role from accessing the Admin panel
+    if (!token || role !== "admin") {
+        return null;
+    }
 
     return (
         <div className="admin-dashboard">
@@ -172,10 +226,28 @@ function AdminDashboard() {
                 <h2>HRMS</h2>
 
                 <nav>
-                    <p className="active">📊 Dashboard</p>
-                    <Link to="/employees">👥 Employees</Link>
-                    <Link to="/attendance">🕒 Attendance</Link>
-                    <Link to="/leaves">📅 Leaves</Link>
+                    <Link
+                        className={
+                            location.pathname === "/admin-dashboard"
+                                ? "active"
+                                : ""
+                        }
+                        to="/admin-dashboard"
+                    >
+                        📊 Dashboard
+                    </Link>
+
+                    {adminPermissions.includes("employees.view") && (
+                        <Link to="/employees">👥 Employees</Link>
+                    )}
+
+                    {adminPermissions.includes("attendance.view") && (
+                        <Link to="/attendance">🕒 Attendance</Link>
+                    )}
+
+                    {adminPermissions.includes("leaves.manage") && (
+                        <Link to="/leaves">📅 Leaves</Link>
+                    )}
                 </nav>
             </aside>
 
@@ -187,9 +259,7 @@ function AdminDashboard() {
                     </div>
 
                     <div className="admin-profile">
-                        <span>
-                            {localStorage.getItem("adminName") || "Admin"}
-                        </span>
+                        <span>{adminName}</span>
                         <button onClick={handleLogout}>Logout</button>
                     </div>
                 </header>
@@ -199,45 +269,61 @@ function AdminDashboard() {
                     <p>Welcome to HRMS Admin Panel</p>
 
                     <div className="dashboard-cards">
-                        <button
-                            type="button"
-                            className="dashboard-card"
-                            onClick={() => setSelectedCard("employees")}
-                        >
-                            <h3>Total Employees</h3>
-                            <p>{totalEmployees}</p>
-                            <span>View employee details →</span>
-                        </button>
+                        {adminPermissions.includes("employees.view") && (
+                            <button
+                                type="button"
+                                className="dashboard-card"
+                                onClick={() =>
+                                    setSelectedCard("employees")
+                                }
+                            >
+                                <h3>Total Employees</h3>
+                                <p>{totalEmployees}</p>
+                                <span>View employee details →</span>
+                            </button>
+                        )}
 
-                        <button
-                            type="button"
-                            className="dashboard-card"
-                            onClick={() => setSelectedCard("present")}
-                        >
-                            <h3>Present Today</h3>
-                            <p>{presentToday}</p>
-                            <span>View attendance →</span>
-                        </button>
+                        {adminPermissions.includes("attendance.view") && (
+                            <button
+                                type="button"
+                                className="dashboard-card"
+                                onClick={() =>
+                                    setSelectedCard("present")
+                                }
+                            >
+                                <h3>Present Today</h3>
+                                <p>{presentToday}</p>
+                                <span>View attendance →</span>
+                            </button>
+                        )}
 
-                        <button
-                            type="button"
-                            className="dashboard-card"
-                            onClick={() => setSelectedCard("leave")}
-                        >
-                            <h3>On Leave</h3>
-                            <p>{onLeave}</p>
-                            <span>View employees on leave →</span>
-                        </button>
+                        {adminPermissions.includes("leaves.manage") && (
+                            <>
+                                <button
+                                    type="button"
+                                    className="dashboard-card"
+                                    onClick={() =>
+                                        setSelectedCard("leave")
+                                    }
+                                >
+                                    <h3>On Leave</h3>
+                                    <p>{onLeave}</p>
+                                    <span>View employees on leave →</span>
+                                </button>
 
-                        <button
-                            type="button"
-                            className="dashboard-card"
-                            onClick={() => setSelectedCard("pending")}
-                        >
-                            <h3>Pending Requests</h3>
-                            <p>{pendingRequests}</p>
-                            <span>Review requests →</span>
-                        </button>
+                                <button
+                                    type="button"
+                                    className="dashboard-card"
+                                    onClick={() =>
+                                        setSelectedCard("pending")
+                                    }
+                                >
+                                    <h3>Pending Requests</h3>
+                                    <p>{pendingRequests}</p>
+                                    <span>Review requests →</span>
+                                </button>
+                            </>
+                        )}
                     </div>
                 </section>
             </main>
@@ -259,6 +345,7 @@ function AdminDashboard() {
                                 <h2 id="dashboard-modal-title">
                                     {getModalTitle()}
                                 </h2>
+
                                 <p>
                                     {selectedCard === "employees" &&
                                         `${employees.length} employees`}
@@ -293,9 +380,7 @@ function AdminDashboard() {
                                             className="modal-list-item"
                                             key={employee._id}
                                         >
-                                            <strong>
-                                                {employee.name}
-                                            </strong>
+                                            <strong>{employee.name}</strong>
                                             <p>{employee.email}</p>
                                         </div>
                                     ))
@@ -313,16 +398,14 @@ function AdminDashboard() {
                                             className="modal-list-item"
                                             key={employee._id}
                                         >
-                                            <strong>
-                                                {employee.name}
-                                            </strong>
+                                            <strong>{employee.name}</strong>
                                             <p>{employee.email}</p>
                                             <p>
                                                 Start Time:{" "}
                                                 {employee.startTime
                                                     ? new Date(
-                                                          employee.startTime
-                                                      ).toLocaleTimeString()
+                                                        employee.startTime
+                                                    ).toLocaleTimeString()
                                                     : "Not available"}
                                             </p>
                                             <p>
@@ -352,10 +435,7 @@ function AdminDashboard() {
                                             <p>
                                                 {leave.employeeId?.email || ""}
                                             </p>
-                                            <p>
-                                                Leave Type:{" "}
-                                                {leave.leaveType}
-                                            </p>
+                                            <p>Leave Type: {leave.leaveType}</p>
                                             <p>
                                                 Dates:{" "}
                                                 {new Date(
@@ -389,10 +469,7 @@ function AdminDashboard() {
                                             <p>
                                                 {leave.employeeId?.email || ""}
                                             </p>
-                                            <p>
-                                                Leave Type:{" "}
-                                                {leave.leaveType}
-                                            </p>
+                                            <p>Leave Type: {leave.leaveType}</p>
                                             <p>
                                                 Dates:{" "}
                                                 {new Date(

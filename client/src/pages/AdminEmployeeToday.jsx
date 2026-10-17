@@ -4,6 +4,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import "./AdminEmployeeToday.css";
 
+const API = "http://localhost:8000/api";
+
 function AdminEmployeeToday() {
     const { employeeId } = useParams();
     const navigate = useNavigate();
@@ -16,18 +18,31 @@ function AdminEmployeeToday() {
     const [expectedToday, setExpectedToday] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [screenStatus, setScreenStatus] = useState("Checking screen share...");
+    const [isWatching, setIsWatching] = useState(false);
 
-    // Timeline ke scrollable container ka reference
     const timelineContainerRef = useRef(null);
+    const videoRef = useRef(null);
+    const peerRef = useRef(null);
+    const socketRef = useRef(null);
+    const pendingCandidatesRef = useRef([]);
 
-    // Initial data fetch
+    const getToken = () => sessionStorage.getItem("adminToken");
+
+    // Fetch employee details
     useEffect(() => {
+        let cancelled = false;
+
         const fetchEmployeeToday = async () => {
             try {
-                const token = localStorage.getItem("adminToken");
+                const token = getToken();
+
+                if (!token) {
+                    throw new Error("Admin login required. Please login again.");
+                }
 
                 const response = await fetch(
-                    `http://localhost:8000/api/admin/employees/${employeeId}/today`,
+                    `${API}/admin/employees/${employeeId}/today`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -43,94 +58,325 @@ function AdminEmployeeToday() {
                     );
                 }
 
+                if (cancelled) return;
+
                 setEmployee(data.employee);
                 setSessions(data.sessions || []);
                 setBreaks(data.breaks || []);
-                setActiveSession(data.session);
-                setActiveBreak(data.break);
-                setExpectedToday(data.expectedToday);
+                setActiveSession(data.session || null);
+                setActiveBreak(data.break || null);
+                setExpectedToday(data.expectedToday || 0);
                 setError("");
             } catch (err) {
-                setError(err.message);
+                if (!cancelled) setError(err.message);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
 
         fetchEmployeeToday();
+
+        return () => {
+            cancelled = true;
+        };
     }, [employeeId]);
 
-    // Socket.IO: real-time updates
+    // Authenticated socket for real-time employee updates
     useEffect(() => {
-        const socket = io("http://localhost:8000");
+        const token = getToken();
 
-        socket.on("connect", () => {
-            console.log("Admin Socket connected:", socket.id);
+        if (!token) return;
+
+        const socket = io("http://localhost:8000", {
+            auth: {
+                token,
+                role: "admin",
+            },
         });
 
-        const handleWorkSessionUpdate = async (data) => {
-            console.log("Work session update received:", data);
+        socketRef.current = socket;
 
-            // Sirf selected employee ki updates handle karo
-            if (String(data.employeeId) !== String(employeeId)) {
+        const refreshEmployee = async (event) => {
+            if (
+                event?.employeeId &&
+                String(event.employeeId) !== String(employeeId)
+            ) {
                 return;
             }
 
             try {
-                const token = localStorage.getItem("adminToken");
-
                 const response = await fetch(
-                    `http://localhost:8000/api/admin/employees/${employeeId}/today`,
+                    `${API}/admin/employees/${employeeId}/today`,
                     {
                         headers: {
-                            Authorization: `Bearer ${token}`,
+                            Authorization: `Bearer ${getToken()}`,
                         },
                     }
                 );
 
-                const updatedData = await response.json();
+                const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(
-                        updatedData.message ||
-                            "Failed to refresh employee details"
-                    );
+                    throw new Error(data.message || "Refresh failed");
                 }
 
-                setEmployee(updatedData.employee);
-                setSessions(updatedData.sessions || []);
-                setBreaks(updatedData.breaks || []);
-                setActiveSession(updatedData.session);
-                setActiveBreak(updatedData.break);
-                setExpectedToday(updatedData.expectedToday);
+                setEmployee(data.employee);
+                setSessions(data.sessions || []);
+                setBreaks(data.breaks || []);
+                setActiveSession(data.session || null);
+                setActiveBreak(data.break || null);
+                setExpectedToday(data.expectedToday || 0);
                 setError("");
             } catch (err) {
-                console.error(
-                    "Failed to update employee details:",
-                    err
-                );
+                console.error("Employee refresh failed:", err);
             }
         };
 
-        socket.on(
-            "work-session-updated",
-            handleWorkSessionUpdate
-        );
+        socket.on("work-session-updated", refreshEmployee);
 
-        socket.on("disconnect", () => {
-            console.log("Admin Socket disconnected");
+        socket.on("connect_error", (err) => {
+            console.error("Socket connection failed:", err.message);
         });
 
         return () => {
-            socket.off(
-                "work-session-updated",
-                handleWorkSessionUpdate
-            );
+            socket.off("work-session-updated", refreshEmployee);
             socket.disconnect();
+
+            if (socketRef.current === socket) {
+                socketRef.current = null;
+            }
         };
     }, [employeeId]);
 
-    // Session aur break events ko ek timeline mein combine karo
+    // Live screen viewer using WebRTC
+    useEffect(() => {
+        const token = getToken();
+
+        if (!token || !activeSession?.shareActive) {
+            setScreenStatus(
+                activeSession
+                    ? "Employee is not sharing their screen"
+                    : "No active work session"
+            );
+            setIsWatching(false);
+            return;
+        }
+
+        let disposed = false;
+        let currentPeer = null;
+        const pendingCandidates = pendingCandidatesRef.current;
+
+        pendingCandidates.length = 0;
+        setScreenStatus("Connecting to employee screen...");
+        setIsWatching(false);
+
+        const socket = io("http://localhost:8000", {
+            auth: {
+                token,
+                role: "admin",
+            },
+        });
+
+        socketRef.current = socket;
+
+        const closePeer = () => {
+            if (currentPeer) {
+                currentPeer.ontrack = null;
+                currentPeer.onicecandidate = null;
+                currentPeer.close();
+                currentPeer = null;
+            }
+
+            peerRef.current = null;
+            pendingCandidates.length = 0;
+
+            if (videoRef.current) {
+                videoRef.current.srcObject = null;
+            }
+
+            setIsWatching(false);
+        };
+
+        const handleOffer = async ({
+            employeeId: offeredEmployeeId,
+            employeeSocketId,
+            offer,
+        } = {}) => {
+            if (
+                disposed ||
+                String(offeredEmployeeId) !== String(employeeId) ||
+                !employeeSocketId ||
+                !offer
+            ) {
+                return;
+            }
+
+            try {
+                closePeer();
+
+                const peer = new RTCPeerConnection({
+                    iceServers: [
+                        {
+                            urls: "stun:stun.l.google.com:19302",
+                        },
+                    ],
+                });
+
+                currentPeer = peer;
+                peerRef.current = peer;
+
+                peer.ontrack = (event) => {
+                    if (disposed || !videoRef.current) return;
+
+                    videoRef.current.srcObject = event.streams[0];
+                    setScreenStatus("Live screen connected");
+
+                    videoRef.current.play().catch((err) => {
+                        console.warn("Video autoplay blocked:", err);
+                    });
+                };
+
+                peer.onicecandidate = (event) => {
+                    if (event.candidate && !disposed) {
+                        socket.emit("screen-ice-candidate", {
+                            employeeId,
+                            targetSocketId: employeeSocketId,
+                            candidate: event.candidate,
+                        });
+                    }
+                };
+
+                peer.onconnectionstatechange = () => {
+                    if (disposed || currentPeer !== peer) return;
+
+                    if (peer.connectionState === "connected") {
+                        setScreenStatus("Live screen connected");
+                        setIsWatching(true);
+                    } else if (
+                        ["failed", "disconnected", "closed"].includes(
+                            peer.connectionState
+                        )
+                    ) {
+                        setScreenStatus("Screen connection lost");
+                        setIsWatching(false);
+                    }
+                };
+
+                await peer.setRemoteDescription(
+                    new RTCSessionDescription(offer)
+                );
+
+                for (const candidate of pendingCandidates.splice(0)) {
+                    try {
+                        await peer.addIceCandidate(
+                            new RTCIceCandidate(candidate)
+                        );
+                    } catch (err) {
+                        console.error("ICE candidate failed:", err);
+                    }
+                }
+
+                const answer = await peer.createAnswer();
+                await peer.setLocalDescription(answer);
+
+                socket.emit(
+                    "screen-answer",
+                    {
+                        employeeId,
+                        employeeSocketId,
+                        answer: peer.localDescription,
+                    },
+                    (result) => {
+                        if (result?.error) {
+                            setScreenStatus(result.error);
+                        }
+                    }
+                );
+            } catch (err) {
+                console.error("WebRTC setup failed:", err);
+                setScreenStatus("Unable to connect to employee screen");
+            }
+        };
+
+        const handleCandidate = async ({
+            employeeId: candidateEmployeeId,
+            fromSocketId,
+            candidate,
+        } = {}) => {
+            if (
+                disposed ||
+                String(candidateEmployeeId) !== String(employeeId) ||
+                !candidate
+            ) {
+                return;
+            }
+
+            if (!currentPeer || !currentPeer.remoteDescription) {
+                pendingCandidates.push(candidate);
+                return;
+            }
+
+            try {
+                await currentPeer.addIceCandidate(
+                    new RTCIceCandidate(candidate)
+                );
+            } catch (err) {
+                console.error("ICE candidate error:", err);
+            }
+        };
+
+        const handleShareStopped = ({
+            employeeId: stoppedEmployeeId,
+        } = {}) => {
+            if (String(stoppedEmployeeId) !== String(employeeId)) return;
+
+            closePeer();
+            setScreenStatus("Employee stopped screen sharing");
+        };
+
+        socket.on("screen-offer", handleOffer);
+        socket.on("screen-ice-candidate", handleCandidate);
+        socket.on("screen-watch-stopped", handleShareStopped);
+
+        socket.on("connect", () => {
+            socket.emit(
+                "watch-employee-screen",
+                { employeeId },
+                (result) => {
+                    if (disposed) return;
+
+                    if (result?.error) {
+                        setScreenStatus(result.error);
+                    } else {
+                        setScreenStatus("Waiting for employee screen...");
+                    }
+                }
+            );
+        });
+
+        socket.on("connect_error", (err) => {
+            if (!disposed) {
+                setScreenStatus(`Connection error: ${err.message}`);
+            }
+        });
+
+        return () => {
+            disposed = true;
+
+            socket.off("screen-offer", handleOffer);
+            socket.off("screen-ice-candidate", handleCandidate);
+            socket.off("screen-watch-stopped", handleShareStopped);
+            socket.disconnect();
+
+            closePeer();
+
+            if (socketRef.current === socket) {
+                socketRef.current = null;
+            }
+        };
+    }, [employeeId, activeSession?.shareActive]);
+
+    // Combine session and break events
     const timeline = [
         ...sessions.flatMap((session) => [
             {
@@ -139,16 +385,13 @@ function AdminEmployeeToday() {
                 time: session.startedAt,
             },
             ...(session.endedAt
-                ? [
-                      {
-                          id: `session-end-${session._id}`,
-                          label: "Session Stopped",
-                          time: session.endedAt,
-                      },
-                  ]
+                ? [{
+                    id: `session-end-${session._id}`,
+                    label: "Session Stopped",
+                    time: session.endedAt,
+                }]
                 : []),
         ]),
-
         ...breaks.flatMap((item) => [
             {
                 id: `break-start-${item._id}`,
@@ -156,21 +399,15 @@ function AdminEmployeeToday() {
                 time: item.startedAt,
             },
             ...(item.endedAt
-                ? [
-                      {
-                          id: `break-end-${item._id}`,
-                          label: "Break Ended",
-                          time: item.endedAt,
-                      },
-                  ]
+                ? [{
+                    id: `break-end-${item._id}`,
+                    label: "Break Ended",
+                    time: item.endedAt,
+                }]
                 : []),
         ]),
-    ].sort(
-        (a, b) =>
-            new Date(a.time).getTime() - new Date(b.time).getTime()
-    );
+    ].sort((a, b) => new Date(a.time) - new Date(b.time));
 
-    // Naya timeline event aane par scroll bottom par le jao
     useEffect(() => {
         const container = timelineContainerRef.current;
 
@@ -179,13 +416,8 @@ function AdminEmployeeToday() {
         }
     }, [timeline.length]);
 
-    if (loading) {
-        return <p>Loading employee details...</p>;
-    }
-
-    if (error) {
-        return <p>Error: {error}</p>;
-    }
+    if (loading) return <p>Loading employee details...</p>;
+    if (error) return <p>Error: {error}</p>;
 
     return (
         <div className="admin-employee-today-page">
@@ -207,19 +439,77 @@ function AdminEmployeeToday() {
 
                 <h3>Today's Summary</h3>
 
-                <p>
-                    Expected Working Hours: {expectedToday}
-                </p>
+                <p>Expected Working Hours: {expectedToday}</p>
+                <p>Work Session: {activeSession ? "Active" : "Not Active"}</p>
+                <p>Break: {activeBreak ? "Active" : "Not Active"}</p>
 
-                <p>
-                    Work Session:{" "}
-                    {activeSession ? "Active" : "Not Active"}
-                </p>
+                <h3>Today's Sessions</h3>
 
-                <p>
-                    Break:{" "}
-                    {activeBreak ? "Active" : "Not Active"}
-                </p>
+                <div
+                    className="sessions-scroll"
+                    style={{
+                        maxHeight: "260px",
+                        overflowY: "auto",
+                        overflowX: "hidden",
+                        paddingRight: "8px",
+                    }}
+                >
+                    {sessions.length === 0 ? (
+                        <p>No work sessions recorded today.</p>
+                    ) : (
+                        sessions.map((session) => (
+                            <div key={session._id} className="timeline-item">
+                                <p>
+                                    Started: {" "}
+                                    {new Date(session.startedAt).toLocaleString()}
+                                </p>
+                                <p>
+                                    Ended: {" "}
+                                    {session.endedAt
+                                        ? new Date(session.endedAt).toLocaleString()
+                                        : "In progress"}
+                                </p>
+                                <p>Mode: {session.isWfo ? "WFO" : "WFH"}</p>
+                                <p>Status: {session.status}</p>
+                                <p>
+                                    Screen Share: {" "}
+                                    {session.shareActive ? "Active" : "Inactive"}
+                                </p>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                <h3>Today's Breaks</h3>
+
+                <div
+                    className="breaks-scroll"
+                    style={{
+                        maxHeight: "220px",
+                        overflowY: "auto",
+                        overflowX: "hidden",
+                        paddingRight: "8px",
+                    }}
+                >
+                    {breaks.length === 0 ? (
+                        <p>No breaks recorded today.</p>
+                    ) : (
+                        breaks.map((item) => (
+                            <div key={item._id} className="timeline-item">
+                                <p>
+                                    Started: {" "}
+                                    {new Date(item.startedAt).toLocaleString()}
+                                </p>
+                                <p>
+                                    Ended: {" "}
+                                    {item.endedAt
+                                        ? new Date(item.endedAt).toLocaleString()
+                                        : "In progress"}
+                                </p>
+                            </div>
+                        ))
+                    )}
+                </div>
 
                 <hr />
 
@@ -233,15 +523,10 @@ function AdminEmployeeToday() {
                         <p>No activity recorded today.</p>
                     ) : (
                         timeline.map((item) => (
-                            <div
-                                className="timeline-item"
-                                key={item.id}
-                            >
+                            <div className="timeline-item" key={item.id}>
                                 <strong>{item.label}</strong>
                                 <p>
-                                    {new Date(
-                                        item.time
-                                    ).toLocaleTimeString()}
+                                    {new Date(item.time).toLocaleTimeString()}
                                 </p>
                             </div>
                         ))

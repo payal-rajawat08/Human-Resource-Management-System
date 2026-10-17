@@ -117,7 +117,6 @@ return () => {
         employee,
     ])
 );
-
     return (
         <div className="attendance-page">
             <h1>Attendance Management</h1>
