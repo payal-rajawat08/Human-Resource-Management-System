@@ -20,19 +20,59 @@ async function closeActiveBreak(session, endTime, endedBy = "system") {
 
     if (!activeBreak) return;
 
-    activeBreak.endedAt = new Date(
+    const actualEndTime = new Date(
         Math.max(
             new Date(endTime).getTime(),
             new Date(activeBreak.startedAt).getTime()
         )
     );
 
+    activeBreak.endedAt = actualEndTime;
     activeBreak.endedBy = endedBy;
     await activeBreak.save();
+
+    const breakMinutes = Math.max(
+        0,
+        Math.floor(
+            (actualEndTime.getTime() -
+                new Date(activeBreak.startedAt).getTime()) / 60000
+        )
+    );
+
+    const attendance = await Attendance.findOne({
+        employeeId: session.employeeId,
+        startTime: session.startedAt,
+    });
+
+    if (attendance) {
+        attendance.breakMinutes =
+            (attendance.breakMinutes || 0) + breakMinutes;
+
+        await attendance.save();
+    }
 }
 
 async function closeSession(session, endTime, reason) {
     await closeActiveBreak(session, endTime, "system");
+    const attendance = await Attendance.findOne({
+        employeeId: session.employeeId,
+        startTime: session.startedAt,
+    });
+
+    if (!session.shareActive && session.pausedAt) {
+        const pausedSeconds = Math.max(
+            0,
+            Math.floor(
+                (endTime.getTime() -
+                    new Date(session.pausedAt).getTime()) / 1000
+            )
+        );
+
+        session.totalPausedSeconds =
+            (session.totalPausedSeconds || 0) + pausedSeconds;
+
+        session.pausedAt = null;
+    }
 
     session.endedAt = endTime;
     session.status = "closed";
@@ -41,18 +81,45 @@ async function closeSession(session, endTime, reason) {
 
     await session.save();
 
-    const attendance = await Attendance.findOne({
-        employeeId: session.employeeId,
-        endTime: null,
-    }).sort({ startTime: -1 });
-
     if (attendance && endTime >= attendance.startTime) {
+        const grossMinutes = Math.max(
+            0,
+            Math.floor(
+                (endTime.getTime() -
+                attendance.startTime.getTime()) / 60000
+            )
+        );
+
+        const totalPausedMinutes = Math.ceil(
+            (session.totalPausedSeconds || 0) / 60
+        );
+
         attendance.endTime = endTime;
+        if (reason === "logout") {
+            attendance.lastLogoutAt = endTime;
+        }
+        attendance.firstLoginAt =
+            attendance.firstLoginAt || attendance.startTime;
+
+        attendance.grossMinutes = grossMinutes;
+        attendance.noShareMinutes = totalPausedMinutes;
+
+        attendance.netWorkingMinutes = Math.max(
+            0,
+            grossMinutes -
+                totalPausedMinutes -
+                (attendance.breakMinutes || 0)
+        );
+
+        attendance.creditedMinutes =
+            attendance.netWorkingMinutes;
+
         await attendance.save();
     }
 
     return attendance;
 }
+
 
 router.post("/sessions/start", authMiddleware, async (req, res) => {
     try {
@@ -167,10 +234,12 @@ router.post("/sessions/end", authMiddleware, async (req, res) => {
         }
 
         const endTime = new Date();
+        const reason = req.body?.logout === true ? "logout" : "user";
+
         const attendance = await closeSession(
             workSession,
             endTime,
-            "user"
+            reason
         );
 
         req.io.emit("work-session-updated", {
@@ -271,9 +340,40 @@ router.post("/sessions/break/end", authMiddleware, async (req, res) => {
             });
         }
 
-        activeBreak.endedAt = new Date();
+        const endTime = new Date();
+
+        activeBreak.endedAt = endTime;
         activeBreak.endedBy = "user";
         await activeBreak.save();
+
+        const attendance = await Attendance.findOne({
+            employeeId,
+            startTime: workSession.startedAt,
+        });
+
+        if (attendance) {
+            const breakMinutes = Math.max(
+                0,
+                Math.floor(
+                    (endTime.getTime() -
+                        new Date(activeBreak.startedAt).getTime()) /
+                        60000
+                )
+            );
+
+            attendance.breakMinutes =
+                (attendance.breakMinutes || 0) + breakMinutes;
+                if (attendance.endTime) {
+                    attendance.netWorkingMinutes = Math.max(
+                        0,
+                        (attendance.grossMinutes || 0) -
+                        Math.ceil((workSession.totalPausedSeconds || 0) / 60) -
+                        (attendance.breakMinutes || 0)
+                    );
+                    attendance.creditedMinutes = attendance.netWorkingMinutes;
+                }
+            await attendance.save();
+        }
 
         req.io.emit("work-session-updated", {
             employeeId: employeeId.toString(),
@@ -283,6 +383,7 @@ router.post("/sessions/break/end", authMiddleware, async (req, res) => {
         return res.status(200).json({
             message: "Break ended successfully",
             break: activeBreak,
+            attendance,
         });
     } catch (error) {
         console.error("End break error:", error);
@@ -296,7 +397,7 @@ router.post("/sessions/break/end", authMiddleware, async (req, res) => {
 router.post("/sessions/heartbeat", authMiddleware, async (req, res) => {
     try {
         const employeeId = req.employeeId;
-        const { shareActive, seq, tabVisible } = req.body;
+        const { seq, tabVisible } = req.body;
 
         const workSession = await WorkSession.findOne({
             employeeId,
@@ -324,10 +425,6 @@ router.post("/sessions/heartbeat", authMiddleware, async (req, res) => {
         }
 
         workSession.lastHeartbeatAt = new Date();
-
-        if (typeof shareActive === "boolean") {
-            workSession.shareActive = shareActive;
-        }
 
         if (typeof tabVisible === "boolean") {
             workSession.tabVisible = tabVisible;
@@ -362,13 +459,13 @@ router.post("/sessions/share-event", authMiddleware, async (req, res) => {
         const { sessionId, type, detail } = req.body;
         const employeeId = req.employeeId;
 
+        const stoppedTypes = ["stopped", "track_ended", "sfu_left"];
+        const startedTypes = ["started", "sfu_joined"];
+
         const allowedTypes = [
-            "started",
-            "stopped",
-            "track_ended",
+            ...startedTypes,
+            ...stoppedTypes,
             "rejected_surface",
-            "sfu_left",
-            "sfu_joined",
         ];
 
         if (
@@ -392,32 +489,46 @@ router.post("/sessions/share-event", authMiddleware, async (req, res) => {
             });
         }
 
+        const now = new Date();
+
         const shareEvent = await ShareEvent.create({
             sessionId,
             type,
             details: detail || null,
         });
 
-        if (["stopped", "track_ended", "sfu_left"].includes(type)) {
-            workSession.shareActive = false;
-        } else if (["started", "sfu_joined"].includes(type)) {
+        if (stoppedTypes.includes(type)) {
+            if (workSession.shareActive) {
+                workSession.shareActive = false;
+                workSession.pausedAt = now;
+            }
+        } else if (startedTypes.includes(type)) {
+            if (!workSession.shareActive && workSession.pausedAt) {
+                const pausedSeconds = Math.max(
+                    0,
+                    Math.floor(
+                        (now.getTime() -
+                            new Date(workSession.pausedAt).getTime()) /
+                            1000
+                    )
+                );
+
+                workSession.totalPausedSeconds =
+                    (workSession.totalPausedSeconds || 0) +
+                    pausedSeconds;
+
+                workSession.pausedAt = null;
+            }
+
             workSession.shareActive = true;
         }
 
         await workSession.save();
 
-        if (
-            [
-                "started",
-                "stopped",
-                "track_ended",
-                "sfu_left",
-                "sfu_joined",
-            ].includes(type)
-        ) {
+        if ([...startedTypes, ...stoppedTypes].includes(type)) {
             req.io.emit("work-session-updated", {
                 employeeId: employeeId.toString(),
-                eventType: ["started", "sfu_joined"].includes(type)
+                eventType: startedTypes.includes(type)
                     ? "sharing-resumed"
                     : "sharing-stopped",
             });
@@ -426,6 +537,9 @@ router.post("/sessions/share-event", authMiddleware, async (req, res) => {
         return res.status(201).json({
             message: "Share event recorded successfully",
             shareEvent,
+            shareActive: workSession.shareActive,
+            pausedAt: workSession.pausedAt,
+            totalPausedSeconds: workSession.totalPausedSeconds,
         });
     } catch (error) {
         console.error("Share event error:", error);
@@ -516,5 +630,156 @@ router.get("/sessions/current", authMiddleware, async (req, res) => {
         });
     }
 });
+
+router.get("/monthly", authMiddleware, async (req, res) => {
+    try {
+        const { month, year } = req.query;
+
+        const selectedMonth = Number(month);
+        const selectedYear = Number(year);
+
+        if (
+            !Number.isInteger(selectedMonth) ||
+            selectedMonth < 1 ||
+            selectedMonth > 12 ||
+            !Number.isInteger(selectedYear) ||
+            selectedYear < 2000 ||
+            selectedYear > 2100
+        ) {
+            return res.status(400).json({
+                message: "Valid month and year are required",
+            });
+        }
+
+        const startDate = new Date(
+            selectedYear,
+            selectedMonth - 1,
+            1
+        );
+
+        const endDate = new Date(
+            selectedYear,
+            selectedMonth,
+            1
+        );
+
+        const records = await Attendance.find({
+            employeeId: req.employeeId,
+            date: {
+                $gte: startDate,
+                $lt: endDate,
+            },
+        }).sort({ date: 1 });
+
+        
+const dailyMap = new Map();
+
+for (const record of records) {
+    const dateKey = new Date(record.date).toLocaleDateString(
+        "en-CA",
+        { timeZone: "Asia/Kolkata" }
+    );
+
+    if (!dailyMap.has(dateKey)) {
+        dailyMap.set(dateKey, {
+            date: dateKey,
+            status: "PRESENT",
+            workMode: record.workMode,
+            sessions: 0,
+            grossMinutes: 0,
+            breakMinutes: 0,
+            noShareMinutes: 0,
+            netWorkingMinutes: 0,
+            creditedMinutes: 0,
+            interruptionsCount: 0,
+            firstLoginAt: null,
+            lastLogoutAt: null,
+            hasOpenSession: false,
+        });
+    }
+
+    const day = dailyMap.get(dateKey);
+
+    day.sessions++;
+
+    day.grossMinutes += record.grossMinutes || 0;
+    day.breakMinutes += record.breakMinutes || 0;
+    day.noShareMinutes += record.noShareMinutes || 0;
+    day.netWorkingMinutes += record.netWorkingMinutes || 0;
+    day.creditedMinutes += record.creditedMinutes || 0;
+    day.interruptionsCount += record.interruptionsCount || 0;
+
+    if (!record.endTime) {
+        day.hasOpenSession = true;
+    }
+
+    if (record.startTime) {
+        if (
+            !day.firstLoginAt ||
+            new Date(record.startTime) < new Date(day.firstLoginAt)
+        ) {
+            day.firstLoginAt = record.startTime;
+        }
+    }
+
+    if (record.endTime) {
+        if (
+            !day.lastLogoutAt ||
+            new Date(record.endTime) > new Date(day.lastLogoutAt)
+        ) {
+            day.lastLogoutAt = record.endTime;
+        }
+    }
+}
+for (const day of dailyMap.values()) {
+    if (day.hasOpenSession) {
+        day.lastLogoutAt = null;
+    }
+}
+const dailyRecords = Array.from(dailyMap.values()).sort(
+    (a, b) => a.date.localeCompare(b.date)
+);
+
+const summary = dailyRecords.reduce(
+    (result, day) => {
+        result.grossMinutes += day.grossMinutes;
+        result.breakMinutes += day.breakMinutes;
+        result.noShareMinutes += day.noShareMinutes;
+        result.netWorkingMinutes += day.netWorkingMinutes;
+        result.creditedMinutes += day.creditedMinutes;
+
+        return result;
+    },
+    {
+        grossMinutes: 0,
+        breakMinutes: 0,
+        noShareMinutes: 0,
+        netWorkingMinutes: 0,
+        creditedMinutes: 0,
+    }
+);
+
+summary.presentDays = dailyRecords.filter(
+    (day) => day.status === "PRESENT"
+).length;
+
+return res.status(200).json({
+    month: selectedMonth,
+    year: selectedYear,
+    totalRecords: records.length,
+    totalDays: dailyRecords.length,
+    summary,
+    dailyRecords,
+    records,
+});
+
+    } catch (error) {
+        console.error("Monthly attendance error:", error);
+        return res.status(500).json({
+            message: "Failed to fetch monthly attendance",
+        });
+    }
+});
+
 
 export default router;

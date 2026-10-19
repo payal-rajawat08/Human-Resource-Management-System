@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -71,38 +70,56 @@ const EmployeeToday = () => {
         peerConnectionsRef.current.clear();
     };
 
-    const handleLogout = () => {
-        if (heartbeatWorkerRef.current) {
-            heartbeatWorkerRef.current.postMessage({ type: "stop" });
-            heartbeatWorkerRef.current.terminate();
-            heartbeatWorkerRef.current = null;
+const handleLogout = async () => {
+    const token = getToken();
+
+    try {
+        if (sessionActive && token) {
+            await axios.post(
+                `${API}/sessions/end`,
+                { logout: true },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
         }
+    } catch (error) {
+        alert(error.response?.data?.message || "Logout failed");
+        return;
+    }
 
-        stopScreenStream();
+    if (heartbeatWorkerRef.current) {
+        heartbeatWorkerRef.current.postMessage({ type: "stop" });
+        heartbeatWorkerRef.current.terminate();
+        heartbeatWorkerRef.current = null;
+    }
 
-        if (screenSocketRef.current) {
-            screenSocketRef.current.disconnect();
-            screenSocketRef.current = null;
-        }
+    stopScreenStream();
 
-        [
-            "token",
-            "adminToken",
-            "employeeId",
-            "employeeName",
-            "adminName",
-            "userRole",
-            "userPermissions",
-        ].forEach((key) => sessionStorage.removeItem(key));
+    if (screenSocketRef.current) {
+        screenSocketRef.current.disconnect();
+        screenSocketRef.current = null;
+    }
 
-        navigate("/login", { replace: true });
-    };
+    [
+        "token",
+        "adminToken",
+        "employeeId",
+        "employeeName",
+        "adminName",
+        "userRole",
+        "userPermissions",
+    ].forEach((key) => sessionStorage.removeItem(key));
+
+    navigate("/login", { replace: true });
+};
 
     useEffect(() => {
         shareActiveRef.current = shareActive;
     }, [shareActive]);
 
-    // WebRTC: send the employee's selected shared surface to the admin.
     useEffect(() => {
         if (!sessionActive || !shareActive) return;
 

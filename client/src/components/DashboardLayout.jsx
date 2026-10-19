@@ -5,26 +5,28 @@ import {
     useNavigate,
 } from "react-router-dom";
 import "../pages/AdminDashboard.css";
+import EmployeeToday from "../pages/EmployeeToday";
 
 function DashboardLayout() {
     const navigate = useNavigate();
     const location = useLocation();
 
     const role =
-        localStorage.getItem("userRole") ||
-        (localStorage.getItem("adminToken") ? "admin" : "employee");
+        sessionStorage.getItem("userRole") ||
+        (sessionStorage.getItem("adminToken") ? "admin" : "employee");
 
     let permissions = [];
 
     try {
         permissions = JSON.parse(
-            localStorage.getItem("userPermissions") || "[]"
+            sessionStorage.getItem("userPermissions") || "[]"
         );
     } catch {
         permissions = [];
     }
 
     const isEmployee = role === "employee";
+
     const isSuperAdmin = [
         "superadmin",
         "super-admin",
@@ -43,10 +45,17 @@ function DashboardLayout() {
             "adminName",
             "userRole",
             "userPermissions",
-        ].forEach((key) => localStorage.removeItem(key));
+        ].forEach((key) => sessionStorage.removeItem(key));
 
-        navigate("/login");
+        navigate("/login", { replace: true });
     };
+
+    const displayName =
+        sessionStorage.getItem("adminName") ||
+        sessionStorage.getItem("employeeName") ||
+        "User";
+
+    const isEmployeeToday = location.pathname === "/employee-today";
 
     return (
         <div className="admin-dashboard">
@@ -58,9 +67,7 @@ function DashboardLayout() {
                         <>
                             <Link
                                 className={
-                                    location.pathname === "/employee-today"
-                                        ? "active"
-                                        : ""
+                                    isEmployeeToday ? "active" : ""
                                 }
                                 to="/employee-today"
                             >
@@ -76,6 +83,17 @@ function DashboardLayout() {
                                 to="/apply-leave"
                             >
                                 📅 Apply Leave
+                            </Link>
+
+                            <Link
+                                className={
+                                    location.pathname === "/my-attendance"
+                                        ? "active"
+                                        : ""
+                                }
+                                to="/my-attendance"
+                            >
+                                📅 My Attendance
                             </Link>
                         </>
                     ) : (
@@ -121,11 +139,7 @@ function DashboardLayout() {
                     </div>
 
                     <div className="admin-profile">
-                        <span>
-                            {localStorage.getItem("adminName") ||
-                                localStorage.getItem("employeeName") ||
-                                "User"}
-                        </span>
+                        <span>{displayName}</span>
 
                         <button onClick={handleLogout}>
                             Logout
@@ -133,7 +147,29 @@ function DashboardLayout() {
                     </div>
                 </header>
 
-                <Outlet />
+                <div
+                    style={{
+                        display:
+                            isEmployee && !isEmployeeToday
+                                ? "none"
+                                : isEmployee
+                                    ? "block"
+                                    : "none",
+                    }}
+                >
+                    {isEmployee && <EmployeeToday />}
+                </div>
+
+                <div
+                    style={{
+                        display:
+                            isEmployeeToday && isEmployee
+                                ? "none"
+                                : "block",
+                    }}
+                >
+                    <Outlet />
+                </div>
             </main>
         </div>
     );

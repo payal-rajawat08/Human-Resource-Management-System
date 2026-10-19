@@ -1,4 +1,3 @@
-
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -57,6 +56,9 @@ io.use(async (socket, next) => {
         }
 
         if (role === "admin" && decoded.id && decoded.role) {
+            if (!permissions.includes("attendance.view")) {
+                return next(new Error("Permission denied"));
+            }
             const admin = await Admin.findById(decoded.id)
                 .populate("role", "name permissions")
                 .select("isActive role permissions");
@@ -68,6 +70,10 @@ io.use(async (socket, next) => {
             const permissions = Array.isArray(admin.permissions)
                 ? admin.permissions
                 : admin.role.permissions || [];
+            console.log("Socket role:", admin.role.name);
+            console.log("Admin permissions:", admin.permissions);
+            console.log("Role permissions:", admin.role.permissions);
+            console.log("Resolved permissions:", permissions);
 
             if (!permissions.includes("attendance.view")) {
                 return next(new Error("Permission denied"));
@@ -80,9 +86,10 @@ io.use(async (socket, next) => {
         }
 
         return next(new Error("Invalid role or token"));
-    } catch {
-        return next(new Error("Invalid or expired token"));
-    }
+    } catch (error) {
+    console.error("Socket authentication error:", error.message);
+    return next(new Error("Invalid or expired token"));
+}
 });
 
 const screenRoom = (employeeId) => `screen-watch:${employeeId}`;

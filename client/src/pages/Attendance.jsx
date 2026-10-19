@@ -25,7 +25,7 @@ function Attendance() {
     useEffect(() => {
         const fetchAttendance = async () => {
             try {
-                const token = localStorage.getItem("adminToken");
+                const token = sessionStorage.getItem("adminToken");
 
                 const headers = {
                     Authorization: `Bearer ${token}`,

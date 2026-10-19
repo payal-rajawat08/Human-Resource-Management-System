@@ -15,7 +15,6 @@
         Arial, sans-serif;
 }
 
-/* Page header */
 .leaves-header {
     display: flex;
     align-items: center;
@@ -72,7 +71,6 @@
     font-weight: 750;
 }
 
-/* Summary cards */
 .leave-stats {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -141,7 +139,6 @@
     font-size: 12px;
 }
 
-/* Main list section */
 .leave-list-section {
     padding: 25px;
     background: #fff;
@@ -181,7 +178,6 @@
     white-space: nowrap;
 }
 
-/* Search and status filters */
 .leave-toolbar {
     display: flex;
     align-items: center;
@@ -256,7 +252,6 @@
     border-color: #2859ed;
 }
 
-/* Leave cards */
 .leave-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -322,7 +317,6 @@
     font-size: 12px;
 }
 
-/* Status badge */
 .leave-status {
     display: inline-flex;
     align-items: center;
@@ -360,7 +354,6 @@
     border-color: #f8d0d4;
 }
 
-/* Dates and leave details */
 .leave-card-details {
     display: grid;
     grid-template-columns: 1.1fr 1fr 1fr;
@@ -404,7 +397,6 @@
     overflow-wrap: anywhere;
 }
 
-/* Approve and Reject actions */
 .leave-actions {
     display: flex;
     justify-content: flex-end;
@@ -453,7 +445,6 @@
     background: #fff0f1;
 }
 
-/* Loading, error and empty states */
 .leave-message {
     display: flex;
     flex-direction: column;
@@ -492,7 +483,28 @@
     font-size: 26px;
 }
 
-/* Responsive layout */
+.leave-reason + .leave-reason {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-left: 3px solid #e2525e;
+    border-radius: 6px;
+    background: #fff5f5;
+}
+
+.leave-reason + .leave-reason > span {
+    color: #bc3544;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.leave-reason + .leave-reason p {
+    margin-top: 6px;
+    color: #7f2933;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
 @media (max-width: 1000px) {
     .leaves-page {
         padding: 25px;
@@ -563,3 +575,85 @@
         flex: 1;
     }
 }
+
+/* Fix rejection popup layout only */
+.leaves-page .leave-modal-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 20px !important;
+    background: rgba(23, 32, 51, 0.55) !important;
+    backdrop-filter: blur(4px);
+}
+
+.leaves-page .leave-reject-modal {
+    display: block !important;
+    width: 100% !important;
+    max-width: 460px !important;
+    margin: auto !important;
+    padding: 28px !important;
+    border: 1px solid #e2e8f2 !important;
+    border-radius: 18px !important;
+    background: #fff !important;
+    color: #172033 !important;
+    box-shadow: 0 24px 70px rgba(23, 32, 51, 0.2) !important;
+}
+
+.leaves-page .leave-reject-modal h2 {
+    margin: 0 0 10px !important;
+    font-size: 23px !important;
+}
+
+.leaves-page .leave-reject-modal > p {
+    margin: 0 0 22px !important;
+    line-height: 1.6 !important;
+}
+
+.leaves-page .leave-reject-modal form label {
+    display: block !important;
+    margin-bottom: 8px !important;
+}
+
+.leaves-page .leave-reject-modal textarea {
+    display: block !important;
+    width: 100% !important;
+    min-height: 115px !important;
+    padding: 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 9px !important;
+    background: #fbfcff !important;
+    color: #243047 !important;
+    font: inherit !important;
+    resize: vertical !important;
+}
+
+.leaves-page .leave-reject-modal .leave-modal-actions {
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    margin-top: 20px !important;
+}
+
+.leaves-page .leave-reject-modal .leave-modal-actions button {
+    padding: 10px 15px !important;
+    border-radius: 9px !important;
+    cursor: pointer;
+}
+
+.leaves-page .leave-reject-modal .reject-cancel-btn {
+    border: 1px solid #e0e6f0 !important;
+    background: #fff !important;
+    color: #62718a !important;
+}
+
+.leaves-page .leave-reject-modal .reject-btn {
+    border: 1px solid #c13e4b !important;
+    background: #c13e4b !important;
+    color: #fff !important;
+}
+
+
+

@@ -434,10 +434,34 @@ function AdminEmployeeToday() {
                         <p>Email: {employee.email}</p>
                     </div>
                 )}
+            <hr />
+            <h3>Live Employee Screen</h3>
+            <p>{screenStatus}</p>
+            <div
+            style={{
+                width: "100%",
+                maxWidth: "900px",
+                background: "#111",
+                borderRadius: "8px",
+                padding: "8px",
+                }}
+                >
+                    <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                        width: "100%",
+                        display: "block",
+                        minHeight: "200px",
+                        objectFit: "contain",
+                        background: "#000",
+                    }}
+                    />
+                    </div>
+                    <h3>Today's Summary</h3>
 
-                <hr />
-
-                <h3>Today's Summary</h3>
 
                 <p>Expected Working Hours: {expectedToday}</p>
                 <p>Work Session: {activeSession ? "Active" : "Not Active"}</p>

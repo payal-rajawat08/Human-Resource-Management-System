@@ -1,53 +1,69 @@
-import { useState , useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./ApplyLeave.css";
 import { io } from "socket.io-client";
+
 function ApplyLeave() {
     const [leaveType, setLeaveType] = useState("Casual Leave");
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
     const [reason, setReason] = useState("");
     const [myLeaves, setMyLeaves] = useState([]);
+
     const navigate = useNavigate();
+
     useEffect(() => {
-    const fetchMyLeaves = async () => {
-        try {
-            const token = localStorage.getItem("token");
+        const fetchMyLeaves = async () => {
+            try {
+                const token = sessionStorage.getItem("token");
 
-            const response = await fetch(
-                "http://localhost:8000/api/admin/leaves/my",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
+                if (!token) {
+                    alert("Please login again.");
+                    navigate("/", { replace: true });
+                    return;
                 }
-            );
 
-            const data = await response.json();
+                const response = await fetch(
+                    "http://localhost:8000/api/admin/leaves/my",
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
 
-            if (response.ok) {
-                setMyLeaves(data.leaves);
+                const data = await response.json();
+
+                if (response.ok) {
+                    setMyLeaves(data.leaves || []);
+                } else {
+                    console.error("Failed to fetch leaves:", data.message);
+                }
+            } catch (error) {
+                console.error("Error fetching my leaves:", error);
             }
-        } catch (error) {
-            console.error("Error fetching my leaves:", error);
-        }
-    };
-    
-    fetchMyLeaves();
-    const socket = io("http://localhost:8000");
-    const employeeId = localStorage.getItem("employeeId");
-    const handleLeaveUpdated = (data) => {
-        if (String(data.employeeId) !== String(employeeId)) {
-            return;
-        }
+        };
+
         fetchMyLeaves();
-    };
-    socket.on("leave-updated", handleLeaveUpdated);
-    return () => {
-        socket.off("leave-updated", handleLeaveUpdated);
-        socket.disconnect();
-    };
-},[]);
+
+        const socket = io("http://localhost:8000");
+        const employeeId = sessionStorage.getItem("employeeId");
+
+        const handleLeaveUpdated = (data) => {
+            if (String(data.employeeId) !== String(employeeId)) {
+                return;
+            }
+
+            fetchMyLeaves();
+        };
+
+        socket.on("leave-updated", handleLeaveUpdated);
+
+        return () => {
+            socket.off("leave-updated", handleLeaveUpdated);
+            socket.disconnect();
+        };
+    }, [navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -58,8 +74,13 @@ function ApplyLeave() {
         }
 
         try {
-            const token = localStorage.getItem("token");
-            console.log("Token:", token);
+            const token = sessionStorage.getItem("token");
+
+            if (!token) {
+                alert("Please login again.");
+                navigate("/", { replace: true });
+                return;
+            }
 
             const response = await fetch(
                 "http://localhost:8000/api/admin/leaves",
@@ -86,9 +107,11 @@ function ApplyLeave() {
             }
 
             alert("Leave request submitted successfully!");
+
             setStartDate("");
             setEndDate("");
             setReason("");
+
             navigate("/employee-today");
         } catch (error) {
             console.error("Apply leave error:", error);
@@ -140,23 +163,37 @@ function ApplyLeave() {
 
                 <button type="submit">Submit Leave Request</button>
             </form>
+
             <h2>My Leave Requests</h2>
+
             {myLeaves.length === 0 ? (
                 <p>No leave requests found.</p>
             ) : (
                 myLeaves.map((leave) => (
-                <div key={leave._id}>
-                    <p><strong>Leave Type:</strong> {leave.leaveType}</p>
-                    <p><strong>Start Date:</strong> {new Date(leave.startDate).toLocaleDateString()}</p>
-                    <p><strong>End Date:</strong> {new Date(leave.endDate).toLocaleDateString()}</p>
-                    <p><strong>Reason:</strong> {leave.reason}</p>
-                    <p><strong>Status:</strong> {leave.status}</p>
-                    <hr />
+                    <div key={leave._id}>
+                        <p>
+                            <strong>Leave Type:</strong> {leave.leaveType}
+                        </p>
+                        <p>
+                            <strong>Start Date:</strong>{" "}
+                            {new Date(leave.startDate).toLocaleDateString()}
+                        </p>
+                        <p>
+                            <strong>End Date:</strong>{" "}
+                            {new Date(leave.endDate).toLocaleDateString()}
+                        </p>
+                        <p>
+                            <strong>Reason:</strong> {leave.reason}
+                        </p>
+                        <p>
+                            <strong>Status:</strong> {leave.status}
+                        </p>
+                        <hr />
                     </div>
-                    ))
-                    )}
-                    </div>
-                    );
-                }
+                ))
+            )}
+        </div>
+    );
+}
 
 export default ApplyLeave;

@@ -13,9 +13,10 @@ import AdminEmployeeToday from "./pages/AdminEmployeeToday";
 import Attendance from "./pages/Attendance";
 import AdminPermissionRoute from "./components/AdminPermissionRoute";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import MyAttendance from "./pages/MyAttendance";
+import DashboardLayout from "./components/DashboardLayout";
 
 function App() {
-    // Re-read sessionStorage whenever the route changes.
     const location = useLocation();
 
     const role = (sessionStorage.getItem("userRole") || "")
@@ -56,22 +57,27 @@ function App() {
 
             {/* Employee Panel */}
             <Route
-                path="/employee-today"
                 element={
                     isEmployee
-                        ? <EmployeeToday />
+                        ? <DashboardLayout />
                         : <Navigate to="/login" replace />
                 }
-            />
+            >
+                <Route
+                    path="/employee-today"
+                    element={null}
+                />
 
-            <Route
-                path="/apply-leave"
-                element={
-                    isEmployee
-                        ? <ApplyLeave />
-                        : <Navigate to="/login" replace />
-                }
-            />
+                <Route
+                    path="/apply-leave"
+                    element={<ApplyLeave />}
+                />
+
+                <Route
+                    path="/my-attendance"
+                    element={<MyAttendance />}
+                />
+            </Route>
 
             {/* Admin Panel */}
             <Route

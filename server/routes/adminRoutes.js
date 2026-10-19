@@ -621,43 +621,62 @@ router.get("/leaves", adminAuthMiddleware, permissionMiddleware("leaves.manage")
     }
 });
 
-router.put("/leaves/:id", adminAuthMiddleware, permissionMiddleware("leaves.manage"), async (req, res) => {
-    try {
-        const { status } = req.body;
 
-        if (!["Approved", "Rejected"].includes(status)) {
-            return res.status(400).json({
-                message: "Invalid leave status",
+router.put( "/leaves/:id", adminAuthMiddleware, permissionMiddleware("leaves.manage"),async (req, res) => {
+        try {
+            const { status, rejectionReason } = req.body;
+
+            if (!["Approved", "Rejected"].includes(status)) {
+                return res.status(400).json({
+                    message: "Invalid leave status",
+                });
+            }
+
+            if (
+                status === "Rejected" &&
+                (typeof rejectionReason !== "string" ||
+                    !rejectionReason.trim())
+            ) {
+                return res.status(400).json({
+                    message: "Rejection reason is required",
+                });
+            }
+
+            const leave = await Leave.findById(req.params.id);
+
+            if (!leave) {
+                return res.status(404).json({
+                    message: "Leave request not found",
+                });
+            }
+
+            leave.status = status;
+
+            if (status === "Rejected") {
+                leave.rejectionReason = rejectionReason.trim();
+            } else {
+                leave.rejectionReason = "";
+            }
+
+            await leave.save();
+
+            req.io.emit("leave-updated", {
+                employeeId: leave.employeeId.toString(),
+                eventType: status.toLowerCase(),
+            });
+
+            return res.status(200).json({
+                message: "Leave status updated successfully",
+                leave,
+            });
+        } catch (error) {
+            console.error("Update leave error:", error);
+            return res.status(500).json({
+                message: "Failed to update leave status",
             });
         }
-
-        const leave = await Leave.findByIdAndUpdate(
-            req.params.id,
-            { status },
-            { new: true }
-        );
-
-        if (!leave) {
-            return res.status(404).json({
-                message: "Leave request not found",
-            });
-        }
-        req.io.emit("leave-updated", {
-            employeeId: leave.employeeId.toString(),
-            eventType: status.toLowerCase(),
-        });
-
-        res.status(200).json({
-            message: "Leave status updated successfully",
-            leave,
-        });
-    } catch (error) {
-        console.error("Update leave error:", error);
-        res.status(500).json({
-            message: "Failed to update leave status",
-        });
     }
-});
+);
 
 router.get("/leaves/my", authMiddleware, async (req, res) => {
     try {

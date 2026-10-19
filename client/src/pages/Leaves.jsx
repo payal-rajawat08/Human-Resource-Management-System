@@ -1,3 +1,4 @@
+
 import { io } from "socket.io-client";
 import { useEffect, useState } from "react";
 import axios from "axios";
@@ -11,73 +12,88 @@ function Leaves() {
     const [searchTerm, setSearchTerm] = useState("");
     const [updatingId, setUpdatingId] = useState(null);
 
-    
-useEffect(() => {
-    const fetchLeaves = async () => {
-        try {
-            const token = localStorage.getItem("adminToken");
+    const [rejectingLeave, setRejectingLeave] = useState(null);
+    const [rejectionReason, setRejectionReason] = useState("");
 
-            const response = await axios.get(
-                "http://localhost:8000/api/admin/leaves",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
+    useEffect(() => {
+        const fetchLeaves = async () => {
+            try {
+                const token = sessionStorage.getItem("adminToken");
 
-            setLeaves(response.data.leaves || []);
-            setError("");
-        } catch (err) {
-            console.error("Error fetching leaves:", err);
+                const response = await axios.get(
+                    "http://localhost:8000/api/admin/leaves",
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
 
-            setError(
-                err.response?.data?.message ||
-                "Failed to load leave requests."
-            );
-        } finally {
-            setLoading(false);
-        }
-    };
-    const socket = io("http://localhost:8000");
-    socket.on("connect", () => {
-        console.log("Leaves page socket connected:", socket.id);
-    });
-    const handleLeaveUpdated = () => {
-        console.log("Leave update received");
+                setLeaves(response.data.leaves || []);
+                setError("");
+            } catch (err) {
+                console.error("Error fetching leaves:", err);
+                setError(
+                    err.response?.data?.message ||
+                    "Failed to load leave requests."
+                );
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const socket = io("http://localhost:8000");
+
+        const handleLeaveUpdated = () => {
+            fetchLeaves();
+        };
+
+        socket.on("leave-updated", handleLeaveUpdated);
         fetchLeaves();
-    };
-    socket.on("leave-updated", handleLeaveUpdated);
-    fetchLeaves();
-    return () => {
-        socket.off("leave-updated", handleLeaveUpdated);
-        socket.disconnect();
-    };
-}, []);
 
-    const updateLeave = async (id, status) => {
+        return () => {
+            socket.off("leave-updated", handleLeaveUpdated);
+            socket.disconnect();
+        };
+    }, []);
+
+    const updateLeave = async (id, status, reason = "") => {
         try {
             setUpdatingId(id);
 
-            const token = localStorage.getItem("adminToken");
+            const token = sessionStorage.getItem("adminToken");
 
-            await axios.put(
+            const response = await axios.put(
                 `http://localhost:8000/api/admin/leaves/${id}`,
-                { status },
+                {
+                    status,
+                    ...(status === "Rejected"
+                        ? { rejectionReason: reason.trim() }
+                        : {}),
+                },
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
                 }
             );
+
+            const updatedLeave = response.data.leave;
 
             setLeaves((previousLeaves) =>
                 previousLeaves.map((leave) =>
                     leave._id === id
-                        ? { ...leave, status }
-                        : leave
-                )
-            );
+            ? {
+                ...leave,
+                ...updatedLeave,
+                employeeId: leave.employeeId,
+            }
+            : leave
+        )
+    );
+
+            setRejectingLeave(null);
+            setRejectionReason("");
         } catch (err) {
             console.error("Error updating leave:", err);
             alert(
@@ -87,6 +103,32 @@ useEffect(() => {
         } finally {
             setUpdatingId(null);
         }
+    };
+
+    const openRejectModal = (leave) => {
+        setRejectingLeave(leave);
+        setRejectionReason("");
+    };
+
+    const closeRejectModal = () => {
+        if (updatingId) return;
+        setRejectingLeave(null);
+        setRejectionReason("");
+    };
+
+    const handleRejectSubmit = (event) => {
+        event.preventDefault();
+
+        if (!rejectionReason.trim()) {
+            alert("Please enter a rejection reason.");
+            return;
+        }
+
+        updateLeave(
+            rejectingLeave._id,
+            "Rejected",
+            rejectionReason
+        );
     };
 
     const counts = {
@@ -111,6 +153,7 @@ useEffect(() => {
             leave.employeeId?.email,
             leave.leaveType,
             leave.reason,
+            leave.rejectionReason,
             leave.status,
         ]
             .join(" ")
@@ -130,10 +173,10 @@ useEffect(() => {
         return Number.isNaN(date.getTime())
             ? "—"
             : date.toLocaleDateString("en-IN", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-              });
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+            });
     };
 
     return (
@@ -158,66 +201,42 @@ useEffect(() => {
             <section className="leave-stats">
                 <button
                     type="button"
-                    className={`leave-stat total ${
-                        filter === "All" ? "selected" : ""
-                    }`}
+                    className={`leave-stat total ${filter === "All" ? "selected" : ""}`}
                     onClick={() => setFilter("All")}
                 >
-                    <span className="leave-stat-label">
-                        Total Requests
-                    </span>
+                    <span className="leave-stat-label">Total Requests</span>
                     <strong>{counts.All}</strong>
-                    <span className="leave-stat-foot">
-                        All applications
-                    </span>
+                    <span className="leave-stat-foot">All applications</span>
                 </button>
 
                 <button
                     type="button"
-                    className={`leave-stat pending ${
-                        filter === "Pending" ? "selected" : ""
-                    }`}
+                    className={`leave-stat pending ${filter === "Pending" ? "selected" : ""}`}
                     onClick={() => setFilter("Pending")}
                 >
-                    <span className="leave-stat-label">
-                        Pending
-                    </span>
+                    <span className="leave-stat-label">Pending</span>
                     <strong>{counts.Pending}</strong>
-                    <span className="leave-stat-foot">
-                        Awaiting decision
-                    </span>
+                    <span className="leave-stat-foot">Awaiting decision</span>
                 </button>
 
                 <button
                     type="button"
-                    className={`leave-stat approved ${
-                        filter === "Approved" ? "selected" : ""
-                    }`}
+                    className={`leave-stat approved ${filter === "Approved" ? "selected" : ""}`}
                     onClick={() => setFilter("Approved")}
                 >
-                    <span className="leave-stat-label">
-                        Approved
-                    </span>
+                    <span className="leave-stat-label">Approved</span>
                     <strong>{counts.Approved}</strong>
-                    <span className="leave-stat-foot">
-                        Accepted requests
-                    </span>
+                    <span className="leave-stat-foot">Accepted requests</span>
                 </button>
 
                 <button
                     type="button"
-                    className={`leave-stat rejected ${
-                        filter === "Rejected" ? "selected" : ""
-                    }`}
+                    className={`leave-stat rejected ${filter === "Rejected" ? "selected" : ""}`}
                     onClick={() => setFilter("Rejected")}
                 >
-                    <span className="leave-stat-label">
-                        Rejected
-                    </span>
+                    <span className="leave-stat-label">Rejected</span>
                     <strong>{counts.Rejected}</strong>
-                    <span className="leave-stat-foot">
-                        Declined requests
-                    </span>
+                    <span className="leave-stat-foot">Declined requests</span>
                 </button>
             </section>
 
@@ -225,9 +244,7 @@ useEffect(() => {
                 <div className="leave-list-heading">
                     <div>
                         <h2>Leave Requests</h2>
-                        <p>
-                            View applications, dates and approval status.
-                        </p>
+                        <p>View applications, dates and approval status.</p>
                     </div>
 
                     <span className="leave-result-count">
@@ -242,25 +259,18 @@ useEffect(() => {
                             type="search"
                             placeholder="Search employee, type or reason..."
                             value={searchTerm}
-                            onChange={(event) =>
-                                setSearchTerm(event.target.value)
-                            }
+                            onChange={(event) => setSearchTerm(event.target.value)}
                             aria-label="Search leave requests"
                         />
                     </div>
 
-                    <div
-                        className="leave-filters"
-                        aria-label="Filter leave requests"
-                    >
+                    <div className="leave-filters" aria-label="Filter leave requests">
                         {["All", "Pending", "Approved", "Rejected"].map(
                             (status) => (
                                 <button
                                     type="button"
                                     key={status}
-                                    className={
-                                        filter === status ? "active" : ""
-                                    }
+                                    className={filter === status ? "active" : ""}
                                     onClick={() => setFilter(status)}
                                 >
                                     {status}
@@ -275,24 +285,17 @@ useEffect(() => {
                         Loading leave requests...
                     </div>
                 ) : error ? (
-                    <div className="leave-message error">
-                        {error}
-                    </div>
+                    <div className="leave-message error">{error}</div>
                 ) : filteredLeaves.length === 0 ? (
                     <div className="leave-message">
                         <span className="leave-empty-icon">▤</span>
                         <h3>No leave requests found</h3>
-                        <p>
-                            Try another filter or search term.
-                        </p>
+                        <p>Try another filter or search term.</p>
                     </div>
                 ) : (
                     <div className="leave-list">
                         {filteredLeaves.map((leave) => (
-                            <article
-                                className="leave-card"
-                                key={leave._id}
-                            >
+                            <article className="leave-card" key={leave._id}>
                                 <div className="leave-card-top">
                                     <div className="leave-employee">
                                         <div className="leave-avatar">
@@ -314,9 +317,7 @@ useEffect(() => {
                                     </div>
 
                                     <span
-                                        className={`leave-status ${(
-                                            leave.status || "Pending"
-                                        ).toLowerCase()}`}
+                                        className={`leave-status ${(leave.status || "Pending").toLowerCase()}`}
                                     >
                                         <span className="status-dot" />
                                         {leave.status || "Pending"}
@@ -326,65 +327,50 @@ useEffect(() => {
                                 <div className="leave-card-details">
                                     <div className="leave-detail">
                                         <span>LEAVE TYPE</span>
-                                        <strong>
-                                            {leave.leaveType || "Other"}
-                                        </strong>
+                                        <strong>{leave.leaveType || "Other"}</strong>
                                     </div>
 
                                     <div className="leave-detail">
                                         <span>FROM</span>
-                                        <strong>
-                                            {formatDate(leave.startDate)}
-                                        </strong>
+                                        <strong>{formatDate(leave.startDate)}</strong>
                                     </div>
 
                                     <div className="leave-detail">
                                         <span>TO</span>
-                                        <strong>
-                                            {formatDate(leave.endDate)}
-                                        </strong>
+                                        <strong>{formatDate(leave.endDate)}</strong>
                                     </div>
                                 </div>
 
                                 <div className="leave-reason">
-                                    <span>Reason</span>
-                                    <p>
-                                        {leave.reason ||
-                                            "No reason provided."}
-                                    </p>
+                                    <span>Employee's Reason</span>
+                                    <p>{leave.reason || "No reason provided."}</p>
                                 </div>
+
+                                {leave.status === "Rejected" &&
+                                    leave.rejectionReason && (
+                                        <div className="leave-reason">
+                                            <span>Rejection Reason</span>
+                                            <p>{leave.rejectionReason}</p>
+                                        </div>
+                                    )}
 
                                 {leave.status === "Pending" && (
                                     <div className="leave-actions">
                                         <button
                                             type="button"
                                             className="reject-btn"
-                                            disabled={
-                                                updatingId === leave._id
-                                            }
-                                            onClick={() =>
-                                                updateLeave(
-                                                    leave._id,
-                                                    "Rejected"
-                                                )
-                                            }
+                                            disabled={updatingId === leave._id}
+                                            onClick={() => openRejectModal(leave)}
                                         >
-                                            {updatingId === leave._id
-                                                ? "Updating..."
-                                                : "Reject"}
+                                            Reject
                                         </button>
 
                                         <button
                                             type="button"
                                             className="approve-btn"
-                                            disabled={
-                                                updatingId === leave._id
-                                            }
+                                            disabled={updatingId === leave._id}
                                             onClick={() =>
-                                                updateLeave(
-                                                    leave._id,
-                                                    "Approved"
-                                                )
+                                                updateLeave(leave._id, "Approved")
                                             }
                                         >
                                             {updatingId === leave._id
@@ -398,6 +384,75 @@ useEffect(() => {
                     </div>
                 )}
             </section>
+
+            {rejectingLeave && (
+                <div
+                    className="leave-modal-backdrop"
+                    onClick={closeRejectModal}
+                >
+                    <section
+                        className="leave-reject-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="reject-modal-title"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <h2 id="reject-modal-title">Reject Leave Request</h2>
+
+                        <p>
+                            Enter the reason for rejecting{" "}
+                            <strong>
+                                {rejectingLeave.employeeId?.name ||
+                                    "this employee's"}
+                            </strong>
+                            's leave request.
+                        </p>
+
+                        <form onSubmit={handleRejectSubmit}>
+                            <label htmlFor="rejectionReason">
+                                Rejection reason <span>*</span>
+                            </label>
+
+                            <textarea
+                                id="rejectionReason"
+                                value={rejectionReason}
+                                onChange={(event) =>
+                                    setRejectionReason(event.target.value)
+                                }
+                                placeholder="Explain why this leave is being rejected..."
+                                rows={4}
+                                maxLength={1000}
+                                required
+                                autoFocus
+                            />
+
+                            <div className="leave-modal-actions">
+                                <button
+                                    type="button"
+                                    className="reject-cancel-btn"
+                                    onClick={closeRejectModal}
+                                    disabled={updatingId !== null}
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    className="reject-btn"
+                                    disabled={
+                                        !rejectionReason.trim() ||
+                                        updatingId !== null
+                                    }
+                                >
+                                    {updatingId === rejectingLeave._id
+                                        ? "Rejecting..."
+                                        : "Confirm Rejection"}
+                                </button>
+                            </div>
+                        </form>
+                    </section>
+                </div>
+            )}
         </div>
     );
 }

@@ -10,7 +10,6 @@ const attendanceSchema = new mongoose.Schema(
             index: true,
         },
 
-        // Calendar date for this attendance record.
         date: {
             type: Date,
             required: true,
@@ -23,8 +22,6 @@ const attendanceSchema = new mongoose.Schema(
             required: true,
         },
 
-        // Existing status field retained for compatibility.
-        // Daily status calculation will be implemented separately.
         status: {
             type: String,
             required: true,

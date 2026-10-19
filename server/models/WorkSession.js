@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const workSessionSchema = new mongoose.Schema(
@@ -88,6 +87,17 @@ const workSessionSchema = new mongoose.Schema(
             enum: ["open", "stale", "closed"],
             default: "open",
             index: true,
+        },
+
+        pausedAt: {
+            type: Date,
+            default: null,
+        },
+
+        totalPausedSeconds: {
+            type: Number,
+            default: 0,
+            min: 0,
         },
     },
     {

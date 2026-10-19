@@ -30,11 +30,44 @@ function AdminLogin() {
                 alert(data.message || "Login failed");
                 return;
             }
-            localStorage.setItem("adminToken", data.token);
-            localStorage.setItem("adminName", data.admin.name);
 
-            navigate("/admin-dashboard");
+            if (!data.token || !data.admin) {
+                alert("Invalid login response from server");
+                return;
+            }
+
+            // Clear previous authentication data in this tab.
+            [
+                "token",
+                "adminToken",
+                "employeeId",
+                "employeeName",
+                "adminName",
+                "userRole",
+                "userPermissions",
+            ].forEach((key) => sessionStorage.removeItem(key));
+
+            // Save the admin session in this tab.
+            sessionStorage.setItem("adminToken", data.token);
+            sessionStorage.setItem("userRole", data.user.role);
+            sessionStorage.setItem(
+                "adminName",
+                data.admin.name || "Admin"
+            );
+            sessionStorage.setItem(
+                "userRole",
+                String(data.admin.role || "admin")
+                    .toLowerCase()
+                    .replace(/[\s_-]/g, "")
+            );
+            sessionStorage.setItem(
+                "userPermissions",
+                JSON.stringify(data.admin.permissions || [])
+            );
+
+            navigate("/admin-dashboard", { replace: true });
         } catch (error) {
+            console.error("Admin login error:", error);
             alert("Server connection failed");
         }
     };
