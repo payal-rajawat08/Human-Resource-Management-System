@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./ApplyLeave.css";
 import { io } from "socket.io-client";
+import { API_BASE_URL } from "../config/api";
 
 function ApplyLeave() {
     const [leaveType, setLeaveType] = useState("Casual Leave");
@@ -24,7 +25,7 @@ function ApplyLeave() {
                 }
 
                 const response = await fetch(
-                    "http://localhost:8000/api/admin/leaves/my",
+                    `${API_BASE_URL}/api/admin/leaves/my`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -46,7 +47,7 @@ function ApplyLeave() {
 
         fetchMyLeaves();
 
-        const socket = io("http://localhost:8000");
+        const socket = io(API_BASE_URL);
         const employeeId = sessionStorage.getItem("employeeId");
 
         const handleLeaveUpdated = (data) => {
@@ -83,7 +84,7 @@ function ApplyLeave() {
             }
 
             const response = await fetch(
-                "http://localhost:8000/api/admin/leaves",
+                `${API_BASE_URL}/api/admin/leaves`,
                 {
                     method: "POST",
                     headers: {

@@ -1,6 +1,7 @@
 import { io } from "socket.io-client";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../config/api";
 import "./Attendance.css";
 
 
@@ -34,11 +35,11 @@ function Attendance() {
                 const [employeesResponse, attendanceResponse] =
                     await Promise.all([
                         axios.get(
-                            "http://localhost:8000/api/admin/employees",
+                            `${API_BASE_URL}/api/admin/employees`,
                             { headers }
                         ),
                         axios.get(
-                            "http://localhost:8000/api/admin/attendance/today",
+                            `${API_BASE_URL}/api/admin/attendance/today`,
                             { headers }
                         ),
                     ]);
@@ -66,7 +67,7 @@ function Attendance() {
 
         fetchAttendance();
 
-        const socket = io("http://localhost:8000");
+        const socket = io("API_BASE_URL");
         socket.on("work-session-updated", fetchAttendance);
         socket.on("employee-updated", fetchAttendance);
 

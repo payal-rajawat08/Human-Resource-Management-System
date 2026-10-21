@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 import "./Employees.css";
 
 function Employees() {
@@ -53,7 +54,7 @@ function Employees() {
             }
 
             const response = await fetch(
-                "http://localhost:8000/api/admin/employees",
+                `${API_BASE_URL}/api/admin/employees`,
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -108,7 +109,7 @@ function Employees() {
 
         try {
             const response = await fetch(
-                "http://localhost:8000/api/admin/employees",
+                `${API_BASE_URL}/api/admin/employees`,
                 {
                     method: "POST",
                     headers: {
@@ -175,7 +176,7 @@ function Employees() {
 
         try {
             const response = await fetch(
-                `http://localhost:8000/api/admin/employees/${employee._id}`,
+               `${API_BASE_URL}/api/admin/employees/${employee._id}`,
                 {
                     method: "DELETE",
                     headers: {

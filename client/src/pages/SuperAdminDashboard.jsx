@@ -2,9 +2,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "../config/api";
 import "./SuperAdminDashboard.css";
 
-const API = "http://localhost:8000/api/admin";
+const API = `${API_BASE_URL}/api/admin`;
 
 const AVAILABLE_PERMISSIONS = [
     { value: "employees.view", label: "View Employees" },

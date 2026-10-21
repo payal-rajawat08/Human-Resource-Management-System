@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { io } from "socket.io-client";
+import { API_BASE_URL } from "../config/api";
 import "./EmployeeToday.css";
 
-const API = "http://localhost:8000/api";
+const API = `${API_BASE_URL}/api`;
 
 const EmployeeToday = () => {
     const navigate = useNavigate();
@@ -128,7 +129,7 @@ const handleLogout = async () => {
 
         if (!token || !employeeId || !screenStreamRef.current) return;
 
-        const socket = io("http://localhost:8000", {
+        const socket = io(API_BASE_URL, {
             auth: { token, role: "employee" },
         });
 

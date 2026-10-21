@@ -2,6 +2,7 @@ import "./AdminDashboard.css";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../config/api";
 import { io } from "socket.io-client";
 
 function AdminDashboard() {
@@ -47,7 +48,7 @@ function AdminDashboard() {
         const fetchDashboard = async () => {
             try {
                 const response = await axios.get(
-                    "http://localhost:8000/api/admin/me",
+                    `${API_BASE_URL}/api/admin/me`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -83,7 +84,7 @@ function AdminDashboard() {
         const fetchEmployees = async () => {
             try {
                 const response = await axios.get(
-                    "http://localhost:8000/api/admin/employees",
+                    `${API_BASE_URL}/api/admin/employees`,
                     { headers }
                 );
 
@@ -101,7 +102,7 @@ function AdminDashboard() {
         const fetchAttendance = async () => {
             try {
                 const response = await axios.get(
-                    "http://localhost:8000/api/admin/attendance/today",
+                    `${API_BASE_URL}/api/admin/attendance/today`,
                     { headers }
                 );
 
@@ -120,7 +121,7 @@ function AdminDashboard() {
         const fetchLeaves = async () => {
             try {
                 const response = await axios.get(
-                    "http://localhost:8000/api/admin/leaves",
+                    `${API_BASE_URL}/api/admin/leaves`,
                     { headers }
                 );
 
@@ -163,7 +164,7 @@ function AdminDashboard() {
         fetchAttendance();
         fetchLeaves();
 
-        const socket = io("http://localhost:8000");
+        const socket = io(API_BASE_URL);
 
         socket.on("employee-updated", fetchEmployees);
         socket.on("work-session-updated", fetchAttendance);

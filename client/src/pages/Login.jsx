@@ -1,6 +1,7 @@
 import axios from "axios";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 import "./Login.css";
 
 const Login = () => {
@@ -22,7 +23,7 @@ const handleSubmit = async (e) => {
 
     try {
         const response = await axios.post(
-            "http://localhost:8000/api/common-login",
+            `${API_BASE_URL}/api/common-login`,
             {
                 email,
                 password,
@@ -118,7 +119,7 @@ const handleSubmit = async (e) => {
 
         try {
             const response = await fetch(
-                "http://localhost:8000/api/forgot-password",
+                `${API_BASE_URL}/api/forgot-password`,
                 {
                     method: "POST",
                     headers: {

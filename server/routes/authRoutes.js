@@ -8,7 +8,7 @@ import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
 
-//  EMPLOYEE REGISTER 
+//  EMPLOYEE REGISTER
 router.post("/register", (req, res) => {
     return res.status(403).json({
         message: "Employee registration is disabled. Contact your administrator.",
@@ -122,6 +122,11 @@ router.post("/common-login", async (req, res) => {
         const permissions = Array.isArray(admin.permissions)
             ? admin.permissions
             : (admin.role.permissions || []);
+
+            console.log("Socket admin ID:", admin._id.toString());
+            console.log("Socket role ID:", admin.role._id.toString());
+            console.log("Socket role name:", admin.role.name);
+            console.log("Resolved permissions:", permissions);
 
         return res.status(200).json({
             message: "Login successful",
@@ -239,7 +244,7 @@ router.post("/forgot-password", async (req, res) => {
     }
 });
 
-//RESET PASSWORD 
+//RESET PASSWORD
 router.post("/reset-password/:token", async (req, res) => {
     try {
         const { password } = req.body;

@@ -1,14 +1,34 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 import { io } from "socket.io-client";
 import "./AdminEmployeeToday.css";
 
-const API = "http://localhost:8000/api";
+const API = `${API_BASE_URL}/api`;
 
 function AdminEmployeeToday() {
     const { employeeId } = useParams();
     const navigate = useNavigate();
+
+    const summaryCardStyle = {
+        padding: "20px",
+        borderRadius: "12px",
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
+    };
+
+    const summaryLabelStyle = {
+        margin: "0 0 10px",
+        color: "#64748b",
+        fontSize: "14px",
+    };
+
+    const summaryValueStyle = {
+        margin: 0,
+        color: "#1e293b",
+        fontSize: "20px",
+    };
 
     const [employee, setEmployee] = useState(null);
     const [sessions, setSessions] = useState([]);
@@ -87,7 +107,7 @@ function AdminEmployeeToday() {
 
         if (!token) return;
 
-        const socket = io("http://localhost:8000", {
+        const socket = io(API_BASE_URL, {
             auth: {
                 token,
                 role: "admin",
@@ -170,7 +190,7 @@ function AdminEmployeeToday() {
         setScreenStatus("Connecting to employee screen...");
         setIsWatching(false);
 
-        const socket = io("http://localhost:8000", {
+        const socket = io(API_BASE_URL, {
             auth: {
                 token,
                 role: "admin",
@@ -435,37 +455,116 @@ function AdminEmployeeToday() {
                     </div>
                 )}
             <hr />
-            <h3>Live Employee Screen</h3>
-            <p>{screenStatus}</p>
-            <div
-            style={{
-                width: "100%",
-                maxWidth: "900px",
-                background: "#111",
-                borderRadius: "8px",
-                padding: "8px",
-                }}
-                >
-                    <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
+
+                <section
                     style={{
-                        width: "100%",
-                        display: "block",
-                        minHeight: "200px",
-                        objectFit: "contain",
-                        background: "#000",
+                        marginTop: "24px",
+                        marginBottom: "28px",
+                        padding: "24px",
+                        background: "#ffffff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "16px",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.05)",
                     }}
-                    />
+                >
+                    <div
+                        style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: "12px",
+                            marginBottom: "18px",
+                        }}
+                    >
+                        <div>
+                            <h2 style={{ margin: "0 0 6px", color: "#1f2937" }}>
+                                Live Employee Screen
+                            </h2>
+                            <p style={{ margin: 0, color: "#6b7280" }}>
+                                {screenStatus}
+                            </p>
+                        </div>
+                        <span
+                            style={{
+                                padding: "7px 12px",
+                                borderRadius: "20px",
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                color: isWatching ? "#166534" : "#92400e",
+                                background: isWatching ? "#dcfce7" : "#fef3c7",
+                            }}
+                        >
+                            {isWatching ? "● Live" : "● Not Connected"}
+                        </span>
                     </div>
-                    <h3>Today's Summary</h3>
 
+                    <div
+                        style={{
+                            width: "100%",
+                            aspectRatio: "16 / 9",
+                            minHeight: "240px",
+                            maxHeight: "70vh",
+                            background: "#111827",
+                            borderRadius: "12px",
+                            overflow: "hidden",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                        }}
+                    >
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "contain",
+                                display: "block",
+                            }}
+                        />
+                    </div>
+                </section>
 
-                <p>Expected Working Hours: {expectedToday}</p>
-                <p>Work Session: {activeSession ? "Active" : "Not Active"}</p>
-                <p>Break: {activeBreak ? "Active" : "Not Active"}</p>
+                <section
+                    style={{
+                        marginBottom: "28px",
+                        padding: "24px",
+                        background: "#ffffff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "16px",
+                    }}
+                >
+                    <h2 style={{ marginTop: 0, color: "#1f2937" }}>
+                        Today's Summary
+                    </h2>
+                    <div
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                            gap: "16px",
+                        }}
+                    >
+                        <div style={summaryCardStyle}>
+                            <p style={summaryLabelStyle}>Expected Working Hours</p>
+                            <h2 style={summaryValueStyle}>{expectedToday} hours</h2>
+                        </div>
+                        <div style={summaryCardStyle}>
+                            <p style={summaryLabelStyle}>Work Session</p>
+                            <h2 style={summaryValueStyle}>
+                                {activeSession ? "Active" : "Not Active"}
+                            </h2>
+                        </div>
+                        <div style={summaryCardStyle}>
+                            <p style={summaryLabelStyle}>Break</p>
+                            <h2 style={summaryValueStyle}>
+                                {activeBreak ? "Active" : "Not Active"}
+                            </h2>
+                        </div>
+                    </div>
+                </section>
 
                 <h3>Today's Sessions</h3>
 

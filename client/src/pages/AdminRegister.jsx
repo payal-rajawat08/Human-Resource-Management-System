@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 import "./AdminRegister.css";
 
 function AdminRegister() {
@@ -15,7 +16,7 @@ function AdminRegister() {
 
         try {
             const response = await fetch(
-                "http://localhost:8000/api/admin/register",
+                `${API_BASE_URL}/api/admin/register`,
                 {
                     method: "POST",
                     headers: {

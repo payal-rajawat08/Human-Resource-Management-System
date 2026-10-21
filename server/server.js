@@ -25,15 +25,19 @@ const server = createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173",
-        methods: ["GET", "POST", "PUT", "DELETE"],
-    },
+    origin: [
+        "http://localhost:5173",
+        "http://217.216.58.127:5173"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+},
 });
 
 // Socket authentication
 io.use(async (socket, next) => {
     try {
         const { token, role } = socket.handshake.auth || {};
+
 
         if (!token || !process.env.JWT_SECRET) {
             return next(new Error("Authentication required"));
@@ -54,42 +58,42 @@ io.use(async (socket, next) => {
 
             return next();
         }
-
         if (role === "admin" && decoded.id && decoded.role) {
-            if (!permissions.includes("attendance.view")) {
-                return next(new Error("Permission denied"));
-            }
-            const admin = await Admin.findById(decoded.id)
-                .populate("role", "name permissions")
-                .select("isActive role permissions");
 
+            const admin = await Admin.findById(decoded.id)
+            .populate("role", "name permissions")
+            .select("isActive role permissions");
             if (!admin || admin.isActive === false || !admin.role) {
                 return next(new Error("Admin account unavailable"));
             }
-
             const permissions = Array.isArray(admin.permissions)
-                ? admin.permissions
-                : admin.role.permissions || [];
+            ? admin.permissions
+            : (admin.role.permissions || []);
+
             console.log("Socket role:", admin.role.name);
             console.log("Admin permissions:", admin.permissions);
             console.log("Role permissions:", admin.role.permissions);
             console.log("Resolved permissions:", permissions);
 
-            if (!permissions.includes("attendance.view")) {
+            const roleName = String(admin.role.name || "")
+            .toLowerCase()
+            .replace(/[\s_-]/g, "");
+            if (
+                roleName !== "superadmin" &&
+                !permissions.includes("attendance.view")
+            ) {
                 return next(new Error("Permission denied"));
             }
-
             socket.data.role = "admin";
             socket.data.adminId = admin._id.toString();
-
             return next();
         }
 
         return next(new Error("Invalid role or token"));
     } catch (error) {
-    console.error("Socket authentication error:", error.message);
-    return next(new Error("Invalid or expired token"));
-}
+        console.error("Socket authentication error:", error.message);
+        return next(new Error("Invalid or expired token"));
+    }
 });
 
 const screenRoom = (employeeId) => `screen-watch:${employeeId}`;

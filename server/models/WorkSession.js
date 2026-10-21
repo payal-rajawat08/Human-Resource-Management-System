@@ -28,6 +28,7 @@ const workSessionSchema = new mongoose.Schema(
             type: String,
             enum: [
                 "user",
+                "logout",
                 "heartbeat_timeout",
                 "new_session",
                 "admin",

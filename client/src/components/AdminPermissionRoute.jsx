@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 
 function AdminPermissionRoute({ permission, children }) {
     const [allowed, setAllowed] = useState(null);
@@ -29,7 +30,7 @@ function AdminPermissionRoute({ permission, children }) {
 
             try {
                 const response = await fetch(
-                    "http://localhost:8000/api/admin/me",
+                    `${API_BASE_URL}/api/admin/me`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,

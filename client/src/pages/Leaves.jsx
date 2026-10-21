@@ -3,6 +3,7 @@ import { io } from "socket.io-client";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import "./Leaves.css";
+import { API_BASE_URL } from "../config/api";
 
 function Leaves() {
     const [leaves, setLeaves] = useState([]);
@@ -21,7 +22,7 @@ function Leaves() {
                 const token = sessionStorage.getItem("adminToken");
 
                 const response = await axios.get(
-                    "http://localhost:8000/api/admin/leaves",
+                    `${API_BASE_URL}/api/admin/leaves`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -42,7 +43,7 @@ function Leaves() {
             }
         };
 
-        const socket = io("http://localhost:8000");
+        const socket = io(API_BASE_URL);
 
         const handleLeaveUpdated = () => {
             fetchLeaves();
@@ -64,7 +65,7 @@ function Leaves() {
             const token = sessionStorage.getItem("adminToken");
 
             const response = await axios.put(
-                `http://localhost:8000/api/admin/leaves/${id}`,
+                `${API_BASE_URL}/api/admin/leaves/${id}`,
                 {
                     status,
                     ...(status === "Rejected"

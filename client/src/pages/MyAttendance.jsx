@@ -2,9 +2,10 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
+import { API_BASE_URL } from "../config/api";
 import "./MyAttendance.css";
 
-const API = "http://localhost:8000/api";
+const API = `${API_BASE_URL}/api`;
 
 const formatHours = (minutes = 0) => {
     const hours = Math.floor(minutes / 60);
@@ -52,7 +53,7 @@ function MyAttendance() {
 
     if (!token || !employeeId) return;
 
-    const socket = io("http://localhost:8000", {
+    const socket =  io(API_BASE_URL, {
         auth: {
             token,
             role: "employee",
