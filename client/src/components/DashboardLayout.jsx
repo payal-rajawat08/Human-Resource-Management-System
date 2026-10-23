@@ -36,20 +36,43 @@ function DashboardLayout() {
     const can = (permission) =>
         isSuperAdmin || permissions.includes(permission);
 
-    const handleLogout = () => {
-        [
-            "token",
-            "adminToken",
-            "employeeId",
-            "employeeName",
-            "adminName",
-            "userRole",
-            "userPermissions",
-        ].forEach((key) => sessionStorage.removeItem(key));
+        const handleLogout = async () => {
+            const token = sessionStorage.getItem("token");
 
-        navigate("/login", { replace: true });
-    };
+             if (isEmployee && token) {
+                try {
+            const response = await fetch(
+                "http://localhost:8000/api/auth/logout",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
 
+            if (!response.ok) {
+                alert("Logout failed. Please try again.");
+                return;
+            }
+        } catch (error) {
+            alert("Logout request failed. Please try again.");
+            return;
+        }
+    }
+
+    [
+        "token",
+        "adminToken",
+        "employeeId",
+        "employeeName",
+        "adminName",
+        "userRole",
+        "userPermissions",
+    ].forEach((key) => sessionStorage.removeItem(key));
+
+    navigate("/login", { replace: true });
+};
     const displayName =
         sessionStorage.getItem("adminName") ||
         sessionStorage.getItem("employeeName") ||

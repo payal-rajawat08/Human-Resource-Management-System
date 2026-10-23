@@ -23,6 +23,22 @@ const employeeSchema = new mongoose.Schema(
         resetPasswordExpires: {
             type: Date,
         },
+        isLoggedIn: {
+            type: Boolean,
+            default: false,
+        },
+        lastLoginAt: {
+            type: Date,
+            default: null,
+        },
+        lastSeenAt: {
+            type: Date,
+            default: null,
+        },
+        lastAppLogoutAt: {
+            type: Date,
+            default: null,
+        },
         employmentStatus: {
             type: String,
             enum: ["active", "notice_period", "terminated"],

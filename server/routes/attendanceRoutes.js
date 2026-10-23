@@ -671,6 +671,24 @@ router.get("/monthly", authMiddleware, async (req, res) => {
             },
         }).sort({ date: 1 });
 
+        const todayKey = new Date().toLocaleDateString("en-CA", {
+            timeZone: "Asia/Kolkata",
+        });
+
+        const activeSession = await WorkSession.findOne({
+            employeeId: req.employeeId,
+            status: "open",
+        });
+
+
+        const hasActiveWorkSession = Boolean(activeSession);
+
+        console.log("MONTHLY DEBUG:", {
+            employeeId: req.employeeId,
+            activeSessionFound: hasActiveWorkSession,
+            activeSessionId: activeSession?._id,
+        });
+
         
 const dailyMap = new Map();
 
@@ -709,7 +727,11 @@ for (const record of records) {
     day.creditedMinutes += record.creditedMinutes || 0;
     day.interruptionsCount += record.interruptionsCount || 0;
 
-    if (!record.endTime) {
+    const todayKey = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Asia/Kolkata",
+    });
+
+    if (dateKey === todayKey && hasActiveWorkSession) {
         day.hasOpenSession = true;
     }
 
@@ -721,15 +743,16 @@ for (const record of records) {
             day.firstLoginAt = record.startTime;
         }
     }
-
-    if (record.endTime) {
+    if (record.lastLogoutAt) {
         if (
             !day.lastLogoutAt ||
-            new Date(record.endTime) > new Date(day.lastLogoutAt)
+            new Date(record.lastLogoutAt) >
+            new Date(day.lastLogoutAt)
         ) {
-            day.lastLogoutAt = record.endTime;
+            day.lastLogoutAt = record.lastLogoutAt;
         }
     }
+   
 }
 for (const day of dailyMap.values()) {
     if (day.hasOpenSession) {
@@ -762,6 +785,16 @@ const summary = dailyRecords.reduce(
 summary.presentDays = dailyRecords.filter(
     (day) => day.status === "PRESENT"
 ).length;
+
+console.log(
+    "MONTHLY ATTENDANCE RESULT:",
+    dailyRecords.map((day) => ({
+        date: day.date,
+        firstLoginAt: day.firstLoginAt,
+        lastLogoutAt: day.lastLogoutAt,
+        hasOpenSession: day.hasOpenSession,
+    }))
+);
 
 return res.status(200).json({
     month: selectedMonth,

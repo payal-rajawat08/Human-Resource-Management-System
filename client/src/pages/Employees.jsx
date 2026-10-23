@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
@@ -6,6 +5,9 @@ import "./Employees.css";
 
 function Employees() {
     const [employees, setEmployees] = useState([]);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
     const [showAddForm, setShowAddForm] = useState(false);
     const [newEmployee, setNewEmployee] = useState({
         name: "",
@@ -134,10 +136,9 @@ function Employees() {
                     _id: data.employee.id || data.employee._id,
                 };
 
-                setEmployees((previous) => [
-                    employeeToAdd,
-                    ...previous,
-                ]);
+                setEmployees((previous) => [employeeToAdd, ...previous]);
+                setSearchTerm("");
+                setCurrentPage(1);
             }
 
             setNewEmployee({
@@ -207,6 +208,26 @@ function Employees() {
             setDeletingEmployeeId(null);
         }
     };
+
+    const normalizedQuery = searchTerm.trim().toLowerCase();
+    const filteredEmployees = employees.filter((employee) => {
+        if (!normalizedQuery) return true;
+        return (
+            String(employee.name || "").toLowerCase().includes(normalizedQuery) ||
+            String(employee.email || "").toLowerCase().includes(normalizedQuery)
+        );
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+    const safePage = Math.min(currentPage, totalPages);
+    const paginatedEmployees = filteredEmployees.slice(
+        (safePage - 1) * pageSize,
+        safePage * pageSize
+    );
+    const firstRecord = filteredEmployees.length
+        ? (safePage - 1) * pageSize + 1
+        : 0;
+    const lastRecord = Math.min(safePage * pageSize, filteredEmployees.length);
 
     return (
         <div className="employees-page">
@@ -301,8 +322,41 @@ function Employees() {
                 </p>
             )}
 
+            <div className="employees-toolbar">
+                <input
+                    type="search"
+                    aria-label="Search employees by name or email"
+                    placeholder="Search by employee name or email..."
+                    value={searchTerm}
+                    onChange={(event) => {
+                        setSearchTerm(event.target.value);
+                        setCurrentPage(1);
+                    }}
+                />
+                <label className="employees-page-size">
+                    <span>Rows per page</span>
+                    <select
+                        value={pageSize}
+                        onChange={(event) => {
+                            setPageSize(Number(event.target.value));
+                            setCurrentPage(1);
+                        }}
+                    >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                    </select>
+                </label>
+            </div>
+
+            <p className="employees-record-count" aria-live="polite">
+                Showing {firstRecord}–{lastRecord} of {filteredEmployees.length} employees
+            </p>
+
             <div className="employees-list">
-                {employees.map((employee) => (
+                {paginatedEmployees.length === 0 ? (
+                    <div className="employees-empty">No employees match your search.</div>
+                ) : paginatedEmployees.map((employee) => (
                     <div className="employee-card" key={employee._id}>
                         <div>
                             <h3>{employee.name}</h3>
@@ -355,6 +409,24 @@ function Employees() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            <div className="employees-pagination">
+                <button
+                    type="button"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={safePage <= 1}
+                >
+                    Previous
+                </button>
+                <span>Page {safePage} of {totalPages}</span>
+                <button
+                    type="button"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={safePage >= totalPages}
+                >
+                    Next
+                </button>
             </div>
         </div>
     );

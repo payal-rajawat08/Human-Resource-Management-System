@@ -33,3 +33,5 @@ services:
 
 volumes:
   hrms-mongo-data:
+    external: true
+    name: hrms-mongo-data

@@ -5,6 +5,7 @@ import Admin from "../models/Admin.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import sendEmail from "../utils/sendEmail.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -52,6 +53,11 @@ router.post("/common-login", async (req, res) => {
                     message: "Invalid email or password",
                 });
             }
+            employee.isLoggedIn = true;
+            employee.lastLoginAt = new Date();
+            employee.lastSeenAt = new Date();
+            employee.lastAppLogoutAt = null;
+            await employee.save();
 
             const token = jwt.sign(
                 { employeeId: employee._id },

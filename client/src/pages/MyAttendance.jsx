@@ -20,6 +20,12 @@ function MyAttendance() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [month, year]);
 
     useEffect(() => {
         const fetchAttendance = async () => {
@@ -97,6 +103,15 @@ function MyAttendance() {
 }, [month, year]);
 
     const summary = data?.summary;
+    const dailyRecords = data?.dailyRecords || [];
+    const totalPages = Math.max(1, Math.ceil(dailyRecords.length / pageSize));
+    const safePage = Math.min(currentPage, totalPages);
+    const paginatedRecords = dailyRecords.slice(
+        (safePage - 1) * pageSize,
+        safePage * pageSize
+    );
+    const firstRecord = dailyRecords.length ? (safePage - 1) * pageSize + 1 : 0;
+    const lastRecord = Math.min(safePage * pageSize, dailyRecords.length);
 
     return (
         <div className="my-attendance-page">
@@ -202,8 +217,8 @@ function MyAttendance() {
                                 </thead>
 
                                 <tbody>
-                                    {data?.dailyRecords?.length ? (
-                                        data.dailyRecords.map((day) => (
+                                    {paginatedRecords.length ? (
+                                        paginatedRecords.map((day) => (
                                             <tr key={day.date}>
                                                 <td>
                                                     {new Date(
@@ -230,18 +245,15 @@ function MyAttendance() {
                                                         : "—"}
                                                 </td>
                                                 <td>
-                                                    {day.lastLogoutAt
-                                                        ? new Date(
-                                                              day.lastLogoutAt
-                                                          ).toLocaleTimeString(
-                                                              [],
-                                                              {
-                                                                  hour: "2-digit",
-                                                                  minute: "2-digit",
-                                                              }
-                                                          )
-                                                        : day.hasOpenSession
-                                                          ? "In progress"
+                                                    {day.hasOpenSession
+                                                        ? "In Progress"
+                                                        : day.lastLogoutAt
+                                                        ? new Date(day.lastLogoutAt).toLocaleTimeString([], {
+                                                            hour: "2-digit",
+                                                            minute: "2-digit",
+                                                        })
+                                                          : day.status?.toUpperCase() === "PRESENT"
+                                                          ? "Employee did not log out of the session"
                                                           : "—"}
                                                 </td>
                                                 <td>
@@ -265,6 +277,46 @@ function MyAttendance() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {dailyRecords.length > 0 && (
+                            <footer className="my-attendance-pagination">
+                                <span className="my-attendance-pagination-info">
+                                    Showing <strong>{firstRecord}–{lastRecord}</strong> of{" "}
+                                    <strong>{dailyRecords.length}</strong> days
+                                </span>
+                                <div className="my-attendance-pagination-controls">
+                                    <label>
+                                        Rows per page
+                                        <select
+                                            value={pageSize}
+                                            onChange={(e) => {
+                                                setPageSize(Number(e.target.value));
+                                                setCurrentPage(1);
+                                            }}
+                                        >
+                                            <option value={5}>5</option>
+                                            <option value={10}>10</option>
+                                            <option value={20}>20</option>
+                                        </select>
+                                    </label>
+                                    <button
+                                        type="button"
+                                        disabled={safePage <= 1}
+                                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                                    >
+                                        ← Previous
+                                    </button>
+                                    <span>Page <strong>{safePage}</strong> of <strong>{totalPages}</strong></span>
+                                    <button
+                                        type="button"
+                                        disabled={safePage >= totalPages}
+                                        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                                    >
+                                        Next →
+                                    </button>
+                                </div>
+                            </footer>
+                        )}
                     </>
                 )}
             </div>

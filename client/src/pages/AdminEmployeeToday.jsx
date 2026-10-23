@@ -11,25 +11,6 @@ function AdminEmployeeToday() {
     const { employeeId } = useParams();
     const navigate = useNavigate();
 
-    const summaryCardStyle = {
-        padding: "20px",
-        borderRadius: "12px",
-        background: "#f8fafc",
-        border: "1px solid #e2e8f0",
-    };
-
-    const summaryLabelStyle = {
-        margin: "0 0 10px",
-        color: "#64748b",
-        fontSize: "14px",
-    };
-
-    const summaryValueStyle = {
-        margin: 0,
-        color: "#1e293b",
-        fontSize: "20px",
-    };
-
     const [employee, setEmployee] = useState(null);
     const [sessions, setSessions] = useState([]);
     const [breaks, setBreaks] = useState([]);
@@ -38,14 +19,11 @@ function AdminEmployeeToday() {
     const [expectedToday, setExpectedToday] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [screenStatus, setScreenStatus] = useState("Checking screen share...");
-    const [isWatching, setIsWatching] = useState(false);
+    const [sessionsPage, setSessionsPage] = useState(1);
+    const [breaksPage, setBreaksPage] = useState(1);
+    const pageSize = 5;
 
-    const timelineContainerRef = useRef(null);
-    const videoRef = useRef(null);
-    const peerRef = useRef(null);
     const socketRef = useRef(null);
-    const pendingCandidatesRef = useRef([]);
 
     const getToken = () => sessionStorage.getItem("adminToken");
 
@@ -168,273 +146,25 @@ function AdminEmployeeToday() {
         };
     }, [employeeId]);
 
-    // Live screen viewer using WebRTC
-    useEffect(() => {
-        const token = getToken();
+    // Pagination data for sessions and breaks
+    const sessionsPageCount = Math.max(
+        1,
+        Math.ceil(sessions.length / pageSize)
+    );
+    const breaksPageCount = Math.max(
+        1,
+        Math.ceil(breaks.length / pageSize)
+    );
 
-        if (!token || !activeSession?.shareActive) {
-            setScreenStatus(
-                activeSession
-                    ? "Employee is not sharing their screen"
-                    : "No active work session"
-            );
-            setIsWatching(false);
-            return;
-        }
+    const paginatedSessions = sessions.slice(
+        (sessionsPage - 1) * pageSize,
+        sessionsPage * pageSize
+    );
 
-        let disposed = false;
-        let currentPeer = null;
-        const pendingCandidates = pendingCandidatesRef.current;
-
-        pendingCandidates.length = 0;
-        setScreenStatus("Connecting to employee screen...");
-        setIsWatching(false);
-
-        const socket = io(API_BASE_URL, {
-            auth: {
-                token,
-                role: "admin",
-            },
-        });
-
-        socketRef.current = socket;
-
-        const closePeer = () => {
-            if (currentPeer) {
-                currentPeer.ontrack = null;
-                currentPeer.onicecandidate = null;
-                currentPeer.close();
-                currentPeer = null;
-            }
-
-            peerRef.current = null;
-            pendingCandidates.length = 0;
-
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
-            }
-
-            setIsWatching(false);
-        };
-
-        const handleOffer = async ({
-            employeeId: offeredEmployeeId,
-            employeeSocketId,
-            offer,
-        } = {}) => {
-            if (
-                disposed ||
-                String(offeredEmployeeId) !== String(employeeId) ||
-                !employeeSocketId ||
-                !offer
-            ) {
-                return;
-            }
-
-            try {
-                closePeer();
-
-                const peer = new RTCPeerConnection({
-                    iceServers: [
-                        {
-                            urls: "stun:stun.l.google.com:19302",
-                        },
-                    ],
-                });
-
-                currentPeer = peer;
-                peerRef.current = peer;
-
-                peer.ontrack = (event) => {
-                    if (disposed || !videoRef.current) return;
-
-                    videoRef.current.srcObject = event.streams[0];
-                    setScreenStatus("Live screen connected");
-
-                    videoRef.current.play().catch((err) => {
-                        console.warn("Video autoplay blocked:", err);
-                    });
-                };
-
-                peer.onicecandidate = (event) => {
-                    if (event.candidate && !disposed) {
-                        socket.emit("screen-ice-candidate", {
-                            employeeId,
-                            targetSocketId: employeeSocketId,
-                            candidate: event.candidate,
-                        });
-                    }
-                };
-
-                peer.onconnectionstatechange = () => {
-                    if (disposed || currentPeer !== peer) return;
-
-                    if (peer.connectionState === "connected") {
-                        setScreenStatus("Live screen connected");
-                        setIsWatching(true);
-                    } else if (
-                        ["failed", "disconnected", "closed"].includes(
-                            peer.connectionState
-                        )
-                    ) {
-                        setScreenStatus("Screen connection lost");
-                        setIsWatching(false);
-                    }
-                };
-
-                await peer.setRemoteDescription(
-                    new RTCSessionDescription(offer)
-                );
-
-                for (const candidate of pendingCandidates.splice(0)) {
-                    try {
-                        await peer.addIceCandidate(
-                            new RTCIceCandidate(candidate)
-                        );
-                    } catch (err) {
-                        console.error("ICE candidate failed:", err);
-                    }
-                }
-
-                const answer = await peer.createAnswer();
-                await peer.setLocalDescription(answer);
-
-                socket.emit(
-                    "screen-answer",
-                    {
-                        employeeId,
-                        employeeSocketId,
-                        answer: peer.localDescription,
-                    },
-                    (result) => {
-                        if (result?.error) {
-                            setScreenStatus(result.error);
-                        }
-                    }
-                );
-            } catch (err) {
-                console.error("WebRTC setup failed:", err);
-                setScreenStatus("Unable to connect to employee screen");
-            }
-        };
-
-        const handleCandidate = async ({
-            employeeId: candidateEmployeeId,
-            fromSocketId,
-            candidate,
-        } = {}) => {
-            if (
-                disposed ||
-                String(candidateEmployeeId) !== String(employeeId) ||
-                !candidate
-            ) {
-                return;
-            }
-
-            if (!currentPeer || !currentPeer.remoteDescription) {
-                pendingCandidates.push(candidate);
-                return;
-            }
-
-            try {
-                await currentPeer.addIceCandidate(
-                    new RTCIceCandidate(candidate)
-                );
-            } catch (err) {
-                console.error("ICE candidate error:", err);
-            }
-        };
-
-        const handleShareStopped = ({
-            employeeId: stoppedEmployeeId,
-        } = {}) => {
-            if (String(stoppedEmployeeId) !== String(employeeId)) return;
-
-            closePeer();
-            setScreenStatus("Employee stopped screen sharing");
-        };
-
-        socket.on("screen-offer", handleOffer);
-        socket.on("screen-ice-candidate", handleCandidate);
-        socket.on("screen-watch-stopped", handleShareStopped);
-
-        socket.on("connect", () => {
-            socket.emit(
-                "watch-employee-screen",
-                { employeeId },
-                (result) => {
-                    if (disposed) return;
-
-                    if (result?.error) {
-                        setScreenStatus(result.error);
-                    } else {
-                        setScreenStatus("Waiting for employee screen...");
-                    }
-                }
-            );
-        });
-
-        socket.on("connect_error", (err) => {
-            if (!disposed) {
-                setScreenStatus(`Connection error: ${err.message}`);
-            }
-        });
-
-        return () => {
-            disposed = true;
-
-            socket.off("screen-offer", handleOffer);
-            socket.off("screen-ice-candidate", handleCandidate);
-            socket.off("screen-watch-stopped", handleShareStopped);
-            socket.disconnect();
-
-            closePeer();
-
-            if (socketRef.current === socket) {
-                socketRef.current = null;
-            }
-        };
-    }, [employeeId, activeSession?.shareActive]);
-
-    // Combine session and break events
-    const timeline = [
-        ...sessions.flatMap((session) => [
-            {
-                id: `session-start-${session._id}`,
-                label: "Session Started",
-                time: session.startedAt,
-            },
-            ...(session.endedAt
-                ? [{
-                    id: `session-end-${session._id}`,
-                    label: "Session Stopped",
-                    time: session.endedAt,
-                }]
-                : []),
-        ]),
-        ...breaks.flatMap((item) => [
-            {
-                id: `break-start-${item._id}`,
-                label: "Break Started",
-                time: item.startedAt,
-            },
-            ...(item.endedAt
-                ? [{
-                    id: `break-end-${item._id}`,
-                    label: "Break Ended",
-                    time: item.endedAt,
-                }]
-                : []),
-        ]),
-    ].sort((a, b) => new Date(a.time) - new Date(b.time));
-
-    useEffect(() => {
-        const container = timelineContainerRef.current;
-
-        if (container) {
-            container.scrollTop = container.scrollHeight;
-        }
-    }, [timeline.length]);
+    const paginatedBreaks = breaks.slice(
+        (breaksPage - 1) * pageSize,
+        breaksPage * pageSize
+    );
 
     if (loading) return <p>Loading employee details...</p>;
     if (error) return <p>Error: {error}</p>;
@@ -442,219 +172,246 @@ function AdminEmployeeToday() {
     return (
         <div className="admin-employee-today-page">
             <div className="admin-employee-today">
-                <button onClick={() => navigate("/employees")}>
+                <button className="back-button" onClick={() => navigate("/employees")}>
                     ← Back to Employees
                 </button>
 
-                <h1>Employee Today's Work</h1>
-
-                {employee && (
+                <div className="employee-page-header">
                     <div>
-                        <h2>{employee.name}</h2>
-                        <p>Email: {employee.email}</p>
+                        <h1>Employee Today's Work</h1>
+                        {employee && (
+                            <div className="employee-profile">
+                                <div className="employee-avatar">
+                                    {(employee.name || "E")
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                </div>
+                                <div>
+                                    <div className="employee-name-row">
+                                        <h2>{employee.name}</h2>
+                                        <span className="employee-active-badge">
+                                            Employee
+                                        </span>
+                                    </div>
+                                    <p className="employee-email">{employee.email}</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                )}
-            <hr />
-
-                <section
-                    style={{
-                        marginTop: "24px",
-                        marginBottom: "28px",
-                        padding: "24px",
-                        background: "#ffffff",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "16px",
-                        boxShadow: "0 4px 16px rgba(0,0,0,0.05)",
-                    }}
-                >
-                    <div
-                        style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                            gap: "12px",
-                            marginBottom: "18px",
-                        }}
-                    >
+                    <div className="today-date-card">
+                        <span className="date-icon">▦</span>
                         <div>
-                            <h2 style={{ margin: "0 0 6px", color: "#1f2937" }}>
-                                Live Employee Screen
-                            </h2>
-                            <p style={{ margin: 0, color: "#6b7280" }}>
-                                {screenStatus}
-                            </p>
+                            <span className="date-label">Today's Date</span>
+                            <strong>
+                                {new Date().toLocaleDateString("en-GB", {
+                                    day: "2-digit",
+                                    month: "short",
+                                    year: "numeric",
+                                })}
+                            </strong>
+                            <span>
+                                {new Date().toLocaleDateString("en-GB", {
+                                    weekday: "long",
+                                })}
+                            </span>
                         </div>
-                        <span
-                            style={{
-                                padding: "7px 12px",
-                                borderRadius: "20px",
-                                fontSize: "13px",
-                                fontWeight: 600,
-                                color: isWatching ? "#166534" : "#92400e",
-                                background: isWatching ? "#dcfce7" : "#fef3c7",
-                            }}
-                        >
-                            {isWatching ? "● Live" : "● Not Connected"}
-                        </span>
                     </div>
+                </div>
+                <hr />
 
-                    <div
-                        style={{
-                            width: "100%",
-                            aspectRatio: "16 / 9",
-                            minHeight: "240px",
-                            maxHeight: "70vh",
-                            background: "#111827",
-                            borderRadius: "12px",
-                            overflow: "hidden",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                        }}
-                    >
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "contain",
-                                display: "block",
-                            }}
-                        />
-                    </div>
-                </section>
-
-                <section
-                    style={{
-                        marginBottom: "28px",
-                        padding: "24px",
-                        background: "#ffffff",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "16px",
-                    }}
-                >
-                    <h2 style={{ marginTop: 0, color: "#1f2937" }}>
-                        Today's Summary
-                    </h2>
-                    <div
-                        style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-                            gap: "16px",
-                        }}
-                    >
-                        <div style={summaryCardStyle}>
-                            <p style={summaryLabelStyle}>Expected Working Hours</p>
-                            <h2 style={summaryValueStyle}>{expectedToday} hours</h2>
+                <section className="summary-section">
+                    <h2 className="summary-title">Today's Summary</h2>
+                    <div className="summary-grid">
+                        <div className="summary-card">
+                            <p className="summary-label">Expected Working Hours</p>
+                            <h2 className="summary-value">{expectedToday} hours</h2>
                         </div>
-                        <div style={summaryCardStyle}>
-                            <p style={summaryLabelStyle}>Work Session</p>
-                            <h2 style={summaryValueStyle}>
+                        <div className="summary-card">
+                            <p className="summary-label">Work Session</p>
+                            <h2 className="summary-value">
                                 {activeSession ? "Active" : "Not Active"}
                             </h2>
                         </div>
-                        <div style={summaryCardStyle}>
-                            <p style={summaryLabelStyle}>Break</p>
-                            <h2 style={summaryValueStyle}>
+                        <div className="summary-card">
+                            <p className="summary-label">Break</p>
+                            <h2 className="summary-value">
                                 {activeBreak ? "Active" : "Not Active"}
                             </h2>
                         </div>
                     </div>
                 </section>
 
-                <h3>Today's Sessions</h3>
+                <div className="section-heading">
+                    <h3>Today's Sessions</h3>
+                    <span className="section-count">
+                        {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+                    </span>
+                </div>
 
-                <div
-                    className="sessions-scroll"
-                    style={{
-                        maxHeight: "260px",
-                        overflowY: "auto",
-                        overflowX: "hidden",
-                        paddingRight: "8px",
-                    }}
-                >
+                <div className="sessions-scroll">
                     {sessions.length === 0 ? (
-                        <p>No work sessions recorded today.</p>
+                        <p className="empty-state">No work sessions recorded today.</p>
                     ) : (
-                        sessions.map((session) => (
-                            <div key={session._id} className="timeline-item">
-                                <p>
-                                    Started: {" "}
-                                    {new Date(session.startedAt).toLocaleString()}
-                                </p>
-                                <p>
-                                    Ended: {" "}
-                                    {session.endedAt
-                                        ? new Date(session.endedAt).toLocaleString()
-                                        : "In progress"}
-                                </p>
-                                <p>Mode: {session.isWfo ? "WFO" : "WFH"}</p>
-                                <p>Status: {session.status}</p>
-                                <p>
-                                    Screen Share: {" "}
-                                    {session.shareActive ? "Active" : "Inactive"}
-                                </p>
-                            </div>
-                        ))
+                        <>
+                            {paginatedSessions.map((session) => (
+                                <div key={session._id} className="activity-card">
+                                    <div className="activity-card__top">
+                                        <span className="activity-card__title">Work session</span>
+                                        <span
+                                            className={`status-pill ${
+                                                session.status === "open"
+                                                    ? "status-pill--active"
+                                                    : "status-pill--closed"
+                                            }`}
+                                        >
+                                            {session.status === "open"
+                                                ? "In progress"
+                                                : session.status || "Closed"}
+                                        </span>
+                                    </div>
+                                    <div className="activity-details">
+                                        <div>
+                                            <span className="detail-label">Started</span>
+                                            <strong>
+                                                {new Date(session.startedAt).toLocaleString()}
+                                            </strong>
+                                        </div>
+                                        <div>
+                                            <span className="detail-label">Ended</span>
+                                            <strong>
+                                                {session.endedAt
+                                                    ? new Date(session.endedAt).toLocaleString()
+                                                    : "In progress"}
+                                            </strong>
+                                        </div>
+                                        <div>
+                                            <span className="detail-label">Work mode</span>
+                                            <strong>
+                                                {session.isWfo ? "Office (WFO)" : "Remote (WFH)"}
+                                            </strong>
+                                        </div>
+                                        <div>
+                                            <span className="detail-label">Duration</span>
+                                            <strong>
+                                                {session.endedAt
+                                                    ? `${Math.max(
+                                                        0,
+                                                        Math.floor(
+                                                            (new Date(session.endedAt) -
+                                                                new Date(session.startedAt)) /
+                                                                60000
+                                                        )
+                                                    )}m`
+                                                    : "In progress"}
+                                            </strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            <Pagination
+                                currentPage={sessionsPage}
+                                totalPages={sessionsPageCount}
+                                onPageChange={setSessionsPage}
+                                totalItems={sessions.length}
+                                pageSize={pageSize}
+                            />
+                        </>
                     )}
                 </div>
 
-                <h3>Today's Breaks</h3>
+                <div className="section-heading">
+                    <h3>Today's Breaks</h3>
+                    <span className="section-count">
+                        {breaks.length} {breaks.length === 1 ? "break" : "breaks"}
+                    </span>
+                </div>
 
-                <div
-                    className="breaks-scroll"
-                    style={{
-                        maxHeight: "220px",
-                        overflowY: "auto",
-                        overflowX: "hidden",
-                        paddingRight: "8px",
-                    }}
-                >
+                <div className="breaks-scroll">
                     {breaks.length === 0 ? (
-                        <p>No breaks recorded today.</p>
+                        <div className="empty-state">
+                            <span className="empty-state-icon">☕</span>
+                            <strong>No breaks recorded today</strong>
+                            <span>Breaks taken by the employee will appear here.</span>
+                        </div>
                     ) : (
-                        breaks.map((item) => (
-                            <div key={item._id} className="timeline-item">
-                                <p>
-                                    Started: {" "}
-                                    {new Date(item.startedAt).toLocaleString()}
-                                </p>
-                                <p>
-                                    Ended: {" "}
-                                    {item.endedAt
-                                        ? new Date(item.endedAt).toLocaleString()
-                                        : "In progress"}
-                                </p>
-                            </div>
-                        ))
+                        <>
+                            {paginatedBreaks.map((item) => (
+                                <div key={item._id} className="activity-card">
+                                    <div className="activity-card__top">
+                                        <span className="activity-card__title">Break</span>
+                                        <span
+                                            className={`status-pill ${
+                                                item.endedAt
+                                                    ? "status-pill--closed"
+                                                    : "status-pill--active"
+                                            }`}
+                                        >
+                                            {item.endedAt ? "Completed" : "In progress"}
+                                        </span>
+                                    </div>
+                                    <div className="activity-details">
+                                        <div>
+                                            <span className="detail-label">Started</span>
+                                            <strong>
+                                                {new Date(item.startedAt).toLocaleString()}
+                                            </strong>
+                                        </div>
+                                        <div>
+                                            <span className="detail-label">Ended</span>
+                                            <strong>
+                                                {item.endedAt
+                                                    ? new Date(item.endedAt).toLocaleString()
+                                                    : "In progress"}
+                                            </strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            <Pagination
+                                currentPage={breaksPage}
+                                totalPages={breaksPageCount}
+                                onPageChange={setBreaksPage}
+                                totalItems={breaks.length}
+                                pageSize={pageSize}
+                            />
+                        </>
                     )}
                 </div>
 
-                <hr />
+            </div>
+        </div>
+    );
+}
 
-                <h3>Today's Timeline</h3>
+function Pagination({ currentPage, totalPages, onPageChange, totalItems, pageSize }) {
+    if (totalItems <= pageSize) return null;
 
-                <div
-                    className="timeline-scroll"
-                    ref={timelineContainerRef}
+    const startItem = (currentPage - 1) * pageSize + 1;
+    const endItem = Math.min(currentPage * pageSize, totalItems);
+
+    return (
+        <div className="pagination">
+            <span className="pagination__info">Showing {startItem}–{endItem} of {totalItems}</span>
+            <div className="pagination__controls">
+                <button
+                    type="button"
+                    className="pagination__button"
+                    onClick={() => onPageChange((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
                 >
-                    {timeline.length === 0 ? (
-                        <p>No activity recorded today.</p>
-                    ) : (
-                        timeline.map((item) => (
-                            <div className="timeline-item" key={item.id}>
-                                <strong>{item.label}</strong>
-                                <p>
-                                    {new Date(item.time).toLocaleTimeString()}
-                                </p>
-                            </div>
-                        ))
-                    )}
-                </div>
+                    Previous
+                </button>
+                <span className="pagination__page">
+                    Page {currentPage} of {totalPages}
+                </span>
+                <button
+                    type="button"
+                    className="pagination__button pagination__button--primary"
+                    onClick={() => onPageChange((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage === totalPages}
+                >
+                    Next
+                </button>
             </div>
         </div>
     );

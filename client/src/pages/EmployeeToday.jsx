@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { io } from "socket.io-client";
 import { API_BASE_URL } from "../config/api";
 import "./EmployeeToday.css";
 
@@ -14,8 +13,6 @@ const EmployeeToday = () => {
     const sessionIdRef = useRef(null);
     const heartbeatWorkerRef = useRef(null);
     const shareActiveRef = useRef(false);
-    const screenSocketRef = useRef(null);
-    const peerConnectionsRef = useRef(new Map());
 
     const [shareActive, setShareActive] = useState(false);
     const [sessionActive, setSessionActive] = useState(false);
@@ -66,9 +63,6 @@ const EmployeeToday = () => {
             });
             screenStreamRef.current = null;
         }
-
-        peerConnectionsRef.current.forEach((peer) => peer.close());
-        peerConnectionsRef.current.clear();
     };
 
 const handleLogout = async () => {
@@ -97,13 +91,6 @@ const handleLogout = async () => {
         heartbeatWorkerRef.current = null;
     }
 
-    stopScreenStream();
-
-    if (screenSocketRef.current) {
-        screenSocketRef.current.disconnect();
-        screenSocketRef.current = null;
-    }
-
     [
         "token",
         "adminToken",
@@ -120,183 +107,6 @@ const handleLogout = async () => {
     useEffect(() => {
         shareActiveRef.current = shareActive;
     }, [shareActive]);
-
-    useEffect(() => {
-        if (!sessionActive || !shareActive) return;
-
-        const token = getToken();
-        const employeeId = sessionStorage.getItem("employeeId");
-
-        if (!token || !employeeId || !screenStreamRef.current) return;
-
-        const socket = io(API_BASE_URL, {
-            auth: { token, role: "employee" },
-        });
-
-        screenSocketRef.current = socket;
-
-        const handleWatchRequest = async ({
-            employeeId: requestedId,
-            adminSocketId,
-        } = {}) => {
-            if (
-                String(requestedId) !== String(employeeId) ||
-                !adminSocketId ||
-                !screenStreamRef.current ||
-                !shareActiveRef.current
-            ) {
-                return;
-            }
-
-            try {
-                const existing = peerConnectionsRef.current.get(adminSocketId);
-                if (existing) existing.close();
-
-                const peer = new RTCPeerConnection({
-                    iceServers: [
-                        { urls: "stun:stun.l.google.com:19302" },
-                    ],
-                });
-
-                peerConnectionsRef.current.set(adminSocketId, peer);
-
-                screenStreamRef.current.getTracks().forEach((track) => {
-                    peer.addTrack(track, screenStreamRef.current);
-                });
-
-                peer.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        socket.emit("screen-ice-candidate", {
-                            employeeId,
-                            targetSocketId: adminSocketId,
-                            candidate: event.candidate,
-                        });
-                    }
-                };
-
-                peer.onconnectionstatechange = () => {
-                    if (
-                        ["failed", "closed", "disconnected"].includes(
-                            peer.connectionState
-                        )
-                    ) {
-                        peer.close();
-                        peerConnectionsRef.current.delete(adminSocketId);
-                    }
-                };
-
-                const offer = await peer.createOffer();
-                await peer.setLocalDescription(offer);
-
-                socket.emit(
-                    "screen-offer",
-                    {
-                        employeeId,
-                        adminSocketId,
-                        offer: peer.localDescription,
-                    },
-                    (result) => {
-                        if (result?.error) {
-                            console.error("Screen offer rejected:", result.error);
-                            peer.close();
-                            peerConnectionsRef.current.delete(adminSocketId);
-                        }
-                    }
-                );
-            } catch (error) {
-                console.error("Unable to create screen connection:", error);
-            }
-        };
-
-        const handleScreenAnswer = async ({
-            employeeId: answerEmployeeId,
-            adminSocketId,
-            answer,
-        } = {}) => {
-            if (
-                String(answerEmployeeId) !== String(employeeId) ||
-                !adminSocketId ||
-                !answer
-            ) {
-                return;
-            }
-
-            const peer = peerConnectionsRef.current.get(adminSocketId);
-            if (!peer) return;
-
-            try {
-                await peer.setRemoteDescription(
-                    new RTCSessionDescription(answer)
-                );
-            } catch (error) {
-                console.error("Unable to apply screen answer:", error);
-            }
-        };
-
-        const handleIceCandidate = async ({
-            employeeId: candidateEmployeeId,
-            fromSocketId,
-            candidate,
-        } = {}) => {
-            if (
-                String(candidateEmployeeId) !== String(employeeId) ||
-                !fromSocketId ||
-                !candidate
-            ) {
-                return;
-            }
-
-            const peer = peerConnectionsRef.current.get(fromSocketId);
-            if (!peer || !peer.remoteDescription) return;
-
-            try {
-                await peer.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (error) {
-                console.error("Unable to add ICE candidate:", error);
-            }
-        };
-
-        const handleWatchStopped = ({
-            employeeId: stoppedEmployeeId,
-            adminSocketId,
-        } = {}) => {
-            if (
-                String(stoppedEmployeeId) !== String(employeeId) ||
-                !adminSocketId
-            ) {
-                return;
-            }
-
-            const peer = peerConnectionsRef.current.get(adminSocketId);
-            if (peer) peer.close();
-
-            peerConnectionsRef.current.delete(adminSocketId);
-        };
-
-        socket.on("screen-watch-request", handleWatchRequest);
-        socket.on("screen-answer", handleScreenAnswer);
-        socket.on("screen-ice-candidate", handleIceCandidate);
-        socket.on("screen-watch-stopped", handleWatchStopped);
-
-        socket.on("connect_error", (error) => {
-            console.error("Screen socket error:", error.message);
-        });
-
-        return () => {
-            socket.off("screen-watch-request", handleWatchRequest);
-            socket.off("screen-answer", handleScreenAnswer);
-            socket.off("screen-ice-candidate", handleIceCandidate);
-            socket.off("screen-watch-stopped", handleWatchStopped);
-            socket.disconnect();
-
-            if (screenSocketRef.current === socket) {
-                screenSocketRef.current = null;
-            }
-
-            peerConnectionsRef.current.forEach((peer) => peer.close());
-            peerConnectionsRef.current.clear();
-        };
-    }, [sessionActive, shareActive]);
 
     // Work timer
     useEffect(() => {
@@ -430,7 +240,7 @@ const handleLogout = async () => {
                     navigate("/login", { replace: true });
                     return;
                 }
-
+             // ye backened se current session mangta hai authorization header mai token bhej de the taki user ko authenticate kar skhe
                 const response = await axios.get(`${API}/sessions/current`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -507,6 +317,7 @@ const handleLogout = async () => {
         let stream;
 
         try {
+            // yaha screen ka mediatream mil tha hai 
             stream = await requestScreen();
 
             const videoTrack = stream.getVideoTracks()[0];
