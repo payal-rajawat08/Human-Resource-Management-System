@@ -1,6 +1,5 @@
 import express from "express";
 import mongoose from "mongoose";
-
 import OfficeIp from "../models/OfficeIp.js";
 import Attendance from "../models/Attendance.js";
 import authMiddleware from "../middleware/authMiddleware.js";
@@ -10,6 +9,7 @@ import ShareEvent from "../models/ShareEvent.js";
 import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
 
 const router = express.Router();
+const screenRoom = (employeeId) => `screen-watch:${employeeId}`;
 
 async function closeActiveBreak(session, endTime, endedBy = "system") {
     const activeBreak = await Break.findOne({
@@ -529,10 +529,23 @@ router.post("/sessions/share-event", authMiddleware, async (req, res) => {
             req.io.emit("work-session-updated", {
                 employeeId: employeeId.toString(),
                 eventType: startedTypes.includes(type)
-                    ? "sharing-resumed"
-                    : "sharing-stopped",
+                ? "sharing-resumed"
+                : "sharing-stopped",
             });
         }
+        
+        // Notify live screen viewers immediately when sharing stops.
+
+        if (stoppedTypes.includes(type)) {
+            req.io.to(screenRoom(employeeId.toString())).emit(
+                "screen-watch-stopped",
+                {
+                    employeeId: employeeId.toString(),
+                    reason: "employee-stopped-sharing",
+                }
+            );
+        }
+
 
         return res.status(201).json({
             message: "Share event recorded successfully",

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { io } from "socket.io-client";
 import { API_BASE_URL } from "../config/api";
 import "./EmployeeToday.css";
 
@@ -13,6 +14,10 @@ const EmployeeToday = () => {
     const sessionIdRef = useRef(null);
     const heartbeatWorkerRef = useRef(null);
     const shareActiveRef = useRef(false);
+    const socketRef = useRef(null);
+    const peerRef = useRef(null);
+    const adminSocketIdRef = useRef(null);
+    const pendingIceCandidatesRef = useRef([]);
 
     const [shareActive, setShareActive] = useState(false);
     const [sessionActive, setSessionActive] = useState(false);
@@ -56,6 +61,12 @@ const EmployeeToday = () => {
     };
 
     const stopScreenStream = () => {
+        if (peerRef.current) {
+            peerRef.current.close();
+            peerRef.current = null;
+        }
+        adminSocketIdRef.current = null;
+        pendingIceCandidatesRef.current = [];
         if (screenStreamRef.current) {
             screenStreamRef.current.getTracks().forEach((track) => {
                 track.onended = null;
@@ -107,6 +118,152 @@ const handleLogout = async () => {
     useEffect(() => {
         shareActiveRef.current = shareActive;
     }, [shareActive]);
+
+    // Socket.IO + WebRTC signaling: employee sends screen stream to an authorized admin.
+    useEffect(() => {
+        const token = getToken();
+        const employeeId = sessionStorage.getItem("employeeId");
+        const role = sessionStorage.getItem("userRole");
+
+        if (!token || !employeeId || role !== "employee") return;
+
+        const socket = io(API_BASE_URL, {
+            auth: { token, role: "employee" },
+            transports: ["websocket", "polling"],
+        });
+        socketRef.current = socket;
+
+        const closePeerConnection = () => {
+            if (peerRef.current) {
+                peerRef.current.onicecandidate = null;
+                peerRef.current.onconnectionstatechange = null;
+                peerRef.current.close();
+                peerRef.current = null;
+            }
+            adminSocketIdRef.current = null;
+            pendingIceCandidatesRef.current = [];
+        };
+
+        const handleWatchRequest = async ({ employeeId: requestedEmployeeId, adminSocketId } = {}) => {
+            if (String(requestedEmployeeId) !== String(employeeId) || !adminSocketId) return;
+
+            const stream = screenStreamRef.current;
+            if (!shareActiveRef.current || !stream || stream.getVideoTracks().every((track) => track.readyState !== "live")) {
+                console.warn("Admin requested screen, but employee screen sharing is not active.");
+                return;
+            }
+
+            try {
+                closePeerConnection();
+                adminSocketIdRef.current = adminSocketId;
+
+                const peer = new RTCPeerConnection({
+                    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+                });
+                peerRef.current = peer;
+
+                stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+
+                peer.onicecandidate = (event) => {
+                    if (event.candidate && socket.connected && adminSocketIdRef.current === adminSocketId) {
+                        socket.emit("screen-ice-candidate", {
+                            employeeId,
+                            targetSocketId: adminSocketId,
+                            candidate: event.candidate,
+                        }, (result) => {
+                            if (result?.error) console.error("Could not send screen ICE candidate:", result.error);
+                        });
+                    }
+                };
+
+                peer.onconnectionstatechange = () => {
+                    if (peer.connectionState === "failed" || peer.connectionState === "closed") {
+                        if (peerRef.current === peer) closePeerConnection();
+                    }
+                };
+
+                const offer = await peer.createOffer();
+                await peer.setLocalDescription(offer);
+
+                socket.emit("screen-offer", {
+                    employeeId,
+                    adminSocketId,
+                    offer: peer.localDescription,
+                }, (result) => {
+                    if (result?.error) {
+                        console.error("Could not send screen offer:", result.error);
+                        if (peerRef.current === peer) closePeerConnection();
+                    }
+                });
+            } catch (error) {
+                console.error("Failed to start screen connection:", error);
+                closePeerConnection();
+            }
+        };
+
+        const handleScreenAnswer = async ({ employeeId: answerEmployeeId, adminSocketId, fromSocketId, answer } = {}) => {
+            if (String(answerEmployeeId) !== String(employeeId) || !answer) return;
+            const expectedAdminSocketId = adminSocketIdRef.current;
+            const senderId = adminSocketId || fromSocketId;
+            if (!expectedAdminSocketId || (senderId && senderId !== expectedAdminSocketId)) return;
+
+            const peer = peerRef.current;
+            if (!peer) return;
+
+            try {
+                await peer.setRemoteDescription(answer);
+                const queuedCandidates = pendingIceCandidatesRef.current;
+                pendingIceCandidatesRef.current = [];
+                for (const candidate of queuedCandidates) {
+                    await peer.addIceCandidate(candidate);
+                }
+            } catch (error) {
+                console.error("Failed to apply admin screen answer:", error);
+                closePeerConnection();
+            }
+        };
+
+        const handleScreenIceCandidate = async ({ employeeId: candidateEmployeeId, fromSocketId, candidate } = {}) => {
+            if (String(candidateEmployeeId) !== String(employeeId) || !candidate) return;
+            if (!adminSocketIdRef.current || fromSocketId !== adminSocketIdRef.current) return;
+
+            const peer = peerRef.current;
+            if (!peer || !peer.remoteDescription) {
+                pendingIceCandidatesRef.current.push(candidate);
+                return;
+            }
+
+            try {
+                await peer.addIceCandidate(candidate);
+            } catch (error) {
+                console.error("Failed to add admin ICE candidate:", error);
+            }
+        };
+
+        const handleWatchStopped = ({ employeeId: stoppedEmployeeId, adminSocketId } = {}) => {
+            if (String(stoppedEmployeeId) !== String(employeeId)) return;
+            if (adminSocketId && adminSocketId !== adminSocketIdRef.current) return;
+            closePeerConnection();
+        };
+
+        socket.on("screen-watch-request", handleWatchRequest);
+        socket.on("screen-answer", handleScreenAnswer);
+        socket.on("screen-ice-candidate", handleScreenIceCandidate);
+        socket.on("screen-watch-stopped", handleWatchStopped);
+        socket.on("connect_error", (error) => {
+            console.error("Employee screen socket connection failed:", error.message);
+        });
+
+        return () => {
+            socket.off("screen-watch-request", handleWatchRequest);
+            socket.off("screen-answer", handleScreenAnswer);
+            socket.off("screen-ice-candidate", handleScreenIceCandidate);
+            socket.off("screen-watch-stopped", handleWatchStopped);
+            closePeerConnection();
+            socket.disconnect();
+            if (socketRef.current === socket) socketRef.current = null;
+        };
+    }, []);
 
     // Work timer
     useEffect(() => {

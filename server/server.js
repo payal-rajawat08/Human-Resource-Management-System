@@ -27,6 +27,7 @@ const io = new Server(server, {
     cors: {
     origin: [
         "http://localhost:5173",
+        "http://192.168.1.2:5173",
         "http://217.216.58.127:5173"
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
@@ -282,26 +283,27 @@ io.on("connection", (socket) => {
         }
     });
 
-    socket.on("stop-watching-employee-screen", async (data = {}, callback) => {
-        const { employeeId } = data;
+    socket.on("stop-watching-employee-screen", (data = {}, callback) => {
+    const { employeeId } = data;
 
-        if (
-            socket.data.role !== "admin" ||
-            !employeeId ||
-            !socket.rooms.has(screenRoom(employeeId))
-        ) {
-            return reply(callback, { error: "Unauthorized" });
-        }
+    if (socket.data.role !== "admin" || !employeeId) {
+        return reply(callback, { error: "Unauthorized" });
+    }
 
-        socket.leave(screenRoom(employeeId));
+    const room = screenRoom(employeeId);
+    const wasWatching = socket.rooms.has(room);
+
+    if (wasWatching) {
+        socket.leave(room);
 
         io.to(employeeId).emit("screen-watch-stopped", {
             employeeId,
             adminSocketId: socket.id,
         });
+    }
 
-        reply(callback, { success: true });
-    });
+    reply(callback, { success: true });
+});
 
     socket.on("disconnect", () => {
         console.log("Socket disconnected:", socket.id);

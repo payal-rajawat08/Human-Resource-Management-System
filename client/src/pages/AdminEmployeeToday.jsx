@@ -21,11 +21,74 @@ function AdminEmployeeToday() {
     const [error, setError] = useState("");
     const [sessionsPage, setSessionsPage] = useState(1);
     const [breaksPage, setBreaksPage] = useState(1);
+    const videoRef = useRef(null);
+    const peerRef = useRef(null);
+    const socketRef = useRef(null);
+    const employeeSocketIdRef = useRef(null);
+    const pendingCandidatesRef = useRef([]);
+    const [screenStatus, setScreenStatus] = useState("Not connected");
+    const [isWatching, setIsWatching] = useState(false);
     const pageSize = 5;
 
-    const socketRef = useRef(null);
-
     const getToken = () => sessionStorage.getItem("adminToken");
+
+    // Close the WebRTC connection and clear the video preview.
+    const closeScreenConnection = () => {
+        if (peerRef.current) {
+            peerRef.current.ontrack = null;
+            peerRef.current.onicecandidate = null;
+            peerRef.current.close();
+            peerRef.current = null;
+        }
+
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+
+        employeeSocketIdRef.current = null;
+        pendingCandidatesRef.current = [];
+        setIsWatching(false);
+    };
+
+    // Called when the admin clicks View Screen.
+    const handleWatchScreen = () => {
+        const socket = socketRef.current;
+
+        if (!socket || !socket.connected) {
+            setScreenStatus("Socket is not connected. Please wait and try again.");
+            return;
+        }
+
+        closeScreenConnection();
+        setScreenStatus("Requesting employee screen...");
+
+        socket.emit("watch-employee-screen", { employeeId },
+             (result) => {
+            if (result?.error) {
+                setScreenStatus(result.error);
+                return;
+            }
+
+            // This only confirms that the server accepted the request.
+            // The screen is not live until WebRTC delivers a video track.
+            setScreenStatus("Request accepted. Waiting for employee screen...");
+        });
+    };
+
+    const handleStopWatching = () => {
+        const socket = socketRef.current;
+
+        if (socket?.connected) {
+            socket.emit("stop-watching-employee-screen", { employeeId }, (result) => {
+                if (result?.error) {
+                    setScreenStatus(result.error);
+                }
+            });
+        }
+
+        closeScreenConnection();
+        setScreenStatus("Stopped watching screen");
+    };
 
     // Fetch employee details
     useEffect(() => {
@@ -94,6 +157,7 @@ function AdminEmployeeToday() {
 
         socketRef.current = socket;
 
+
         const refreshEmployee = async (event) => {
             if (
                 event?.employeeId &&
@@ -132,12 +196,158 @@ function AdminEmployeeToday() {
 
         socket.on("work-session-updated", refreshEmployee);
 
+        const handleScreenOffer = async ({
+            employeeId: offeredEmployeeId,
+            employeeSocketId,
+            offer,
+        } = {}) => {
+            if (String(offeredEmployeeId) !== String(employeeId)) return;
+            if (!employeeSocketId || !offer) return;
+
+            try {
+                // Keep candidates that may have arrived just before the offer.
+                const candidatesReceivedEarly = pendingCandidatesRef.current;
+
+                // A new offer means we should discard any old peer connection.
+                closeScreenConnection();
+                pendingCandidatesRef.current = candidatesReceivedEarly.filter(
+                    (item) => item.fromSocketId === employeeSocketId
+                );
+                employeeSocketIdRef.current = employeeSocketId;
+                setScreenStatus("Setting up screen connection...");
+
+                const peer = new RTCPeerConnection({
+                    iceServers: [
+                        {
+                            urls: "stun:stun.l.google.com:19302",
+                        },
+                    ],
+                });
+
+                peerRef.current = peer;
+
+                peer.ontrack = (event) => {
+                    if (videoRef.current && event.streams?.[0]) {
+                        videoRef.current.srcObject = event.streams[0];
+                        setIsWatching(true);
+                        setScreenStatus("Live screen connected");
+                        videoRef.current.play?.().catch(() => {
+                        });
+                    }
+                };
+
+                peer.onicecandidate = (event) => {
+                    if (event.candidate && socket.connected) {
+                        socket.emit("screen-ice-candidate", {
+                            employeeId,
+                            targetSocketId: employeeSocketId,
+                            candidate: event.candidate,
+                        }, (result) => {
+                            if (result?.error) {
+                                console.error("Could not send ICE candidate:", result.error);
+                            }
+                        });
+                    }
+                };
+
+                peer.onconnectionstatechange = () => {
+                    if (peer.connectionState === "failed") {
+                        setScreenStatus("Screen connection failed");
+                        setIsWatching(false);
+                    } else if (peer.connectionState === "disconnected") {
+                        setScreenStatus("Screen connection interrupted");
+                    } else if (peer.connectionState === "closed") {
+                        setIsWatching(false);
+                    }
+                };
+
+                await peer.setRemoteDescription(offer);
+
+                // Add only candidates received from the employee socket for this offer.
+                const queuedCandidates = pendingCandidatesRef.current;
+                pendingCandidatesRef.current = [];
+                for (const item of queuedCandidates) {
+                    if (item.fromSocketId === employeeSocketId) {
+                        await peer.addIceCandidate(item.candidate);
+                    }
+                }
+
+                const answer = await peer.createAnswer();
+                await peer.setLocalDescription(answer);
+
+                socket.emit("screen-answer", {
+                    employeeId,
+                    employeeSocketId,
+                    answer: peer.localDescription,
+                }, (result) => {
+                    if (result?.error) {
+                        setScreenStatus(result.error);
+                        return;
+                    }
+                   
+                });
+            } catch (err) {
+                console.error("Screen connection failed:", err);
+                closeScreenConnection();
+                setScreenStatus("Failed to connect to employee screen");
+            }
+        };
+
+        const handleScreenIceCandidate = async ({
+            employeeId: candidateEmployeeId,
+            fromSocketId,
+            candidate,
+        } = {}) => {
+            if (String(candidateEmployeeId) !== String(employeeId) || !candidate) return;
+
+            // Only accept candidates from the employee socket that sent the current offer.
+            const expectedEmployeeSocketId = employeeSocketIdRef.current;
+            if (expectedEmployeeSocketId && fromSocketId !== expectedEmployeeSocketId) return;
+
+            const peer = peerRef.current;
+            if (!peer || !peer.remoteDescription) {
+                pendingCandidatesRef.current.push({ fromSocketId, candidate });
+                return;
+            }
+
+            if (fromSocketId !== expectedEmployeeSocketId) return;
+
+            try {
+                await peer.addIceCandidate(candidate);
+            } catch (err) {
+                console.error("Failed to add ICE candidate:", err);
+            }
+        };
+
+        const handleScreenWatchStopped = ({
+            employeeId: stoppedEmployeeId,
+            adminSocketId,
+        } = {}) => {
+            if (
+                String(stoppedEmployeeId) !== String(employeeId) ||
+                (adminSocketId && adminSocketId !== socket.id)
+            ) {
+                return;
+            }
+
+            closeScreenConnection();
+            setScreenStatus("Employee is not sharing their screen");
+        };
+
+        socket.on("screen-offer", handleScreenOffer);
+        socket.on("screen-ice-candidate", handleScreenIceCandidate);
+        socket.on("screen-watch-stopped", handleScreenWatchStopped);
+
         socket.on("connect_error", (err) => {
             console.error("Socket connection failed:", err.message);
         });
 
         return () => {
             socket.off("work-session-updated", refreshEmployee);
+            socket.off("screen-offer", handleScreenOffer);
+            socket.off("screen-ice-candidate", handleScreenIceCandidate);
+            socket.off("screen-watch-stopped", handleScreenWatchStopped);
+            closeScreenConnection();
             socket.disconnect();
 
             if (socketRef.current === socket) {
@@ -238,6 +448,26 @@ function AdminEmployeeToday() {
                                 {activeBreak ? "Active" : "Not Active"}
                             </h2>
                         </div>
+                    </div>
+                </section>
+
+                <section className="screen-viewer" style={{ margin: "24px 0", padding: "20px", border: "1px solid #e5e7eb", borderRadius: "12px" }}>
+                    <h3 style={{ marginTop: 0 }}>Employee Live Screen</h3>
+                    <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{ display: "block", width: "100%", maxWidth: "800px", minHeight: "180px", background: "#111827", borderRadius: "8px" }}
+                    />
+                    <p role="status" aria-live="polite">{screenStatus}</p>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                        <button type="button" onClick={handleWatchScreen} disabled={isWatching}>
+                            View Screen
+                        </button>
+                        <button type="button" onClick={handleStopWatching} disabled={!isWatching && screenStatus === "Not connected"}>
+                            Stop Watching
+                        </button>
                     </div>
                 </section>
 
