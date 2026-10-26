@@ -264,11 +264,7 @@ router.get("/roles", adminAuthMiddleware, requireSuperAdmin, async (req, res) =>
     }
 });
 
-router.delete(
-    "/roles/:id",
-    adminAuthMiddleware,
-    requireSuperAdmin,
-    async (req, res) => {
+router.delete("/roles/:id", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
         try {
             const role = await Role.findById(req.params.id);
 
@@ -376,11 +372,38 @@ router.put("/roles/:id", adminAuthMiddleware,requireSuperAdmin, async (req, res)
 router.get("/employees",adminAuthMiddleware,permissionMiddleware("employees.view"),
     async (req, res) => {
         try {
-            const employees = await Employee.find().select("-password");
+            const { page, limit, search = "" } = req.query;
+            const filter = {};
+            if(search.trim()){
+                filter.$or= [
+                    { name: { $regex: search.trim(), $options:"i"}},
+                    { email: { $regex: search.trim(), $options:"i"}},
+                ];
+            }
+            if (page === undefined && limit === undefined && !search.trim()){
+                const employees = await Employee.find()
+                    .select("-password");
+                return res.status(200).json({ employees });
+            }
+            const currentPage= Math.max(1,Number.parseInt(page,10) || 1);
+            const pageSize = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 10));
+            const skip  = (currentPage - 1) * pageSize;
+            const totalEmployees = await Employee.countDocuments(filter);
+
+            const employees = await Employee.find(filter)
+                .select("-password")
+                .sort({ _id:-1 })
+                .skip(skip)
+                .limit(pageSize);
 
             res.status(200).json({
                 employees,
+                currentPage,
+                pageSize,
+                totalEmployees,
+                totalPages: Math.ceil(totalEmployees / pageSize),
             });
+
         } catch (error) {
             console.error("Get employees error:", error);
             res.status(500).json({
@@ -393,11 +416,33 @@ router.get("/employees",adminAuthMiddleware,permissionMiddleware("employees.view
 
 router.get("/attendance/today", adminAuthMiddleware, permissionMiddleware("attendance.view"), async (req, res) => {
     try {
+        const { page = "1", limit = "5" , search = "", status = "All" } = req.query;
+        const currentPage = Math.max(1, parseInt(page, 10) || 1);
+        const pageSize = Math.min(100, Math.max(1, parseInt(limit,10) || 5));
+        const skip = (currentPage - 1) * pageSize;
         const start = new Date();
         start.setHours(0, 0, 0, 0);
 
         const end = new Date();
         end.setHours(23, 59, 59, 999);
+
+        const searchText = search.trim().replace(
+             /[.*+?^${}()|[\]\\]/g,
+             "\\$&"
+        );
+        const employeeFilter = searchText
+            ? {
+                  $or: [
+                      { name: { $regex: searchText, $options: "i" } },
+                      { email: { $regex: searchText, $options: "i" } },
+                  ],
+              }
+              : {};
+        const totalMatchingEmployees = await Employee.countDocuments(employeeFilter);
+
+        const allEmployees = await Employee.find(employeeFilter)
+            .select("name email")
+            .sort({ _id: -1 });
 
         const approvedLeaves = await Leave.find({
             status: "Approved",
@@ -481,19 +526,70 @@ router.get("/attendance/today", adminAuthMiddleware, permissionMiddleware("atten
         }
 
         const presentEmployees = Array.from(employeeMap.values());
+        const presentMap = new Map(presentEmployees.map((employee) => [String(employee._id), employee]));
 
-        res.status(200).json({
-            presentToday: presentEmployees.length,
-            presentEmployees,
-            leaveEmployees: approvedLeaves
-        .filter((leave) => leave.employeeId)
+
+        const leaveMap = new Map();
+        for (const leave of approvedLeaves) {
+            if (leave.employeeId) {
+                leaveMap.set(String(leave.employeeId._id), leave.employeeId);
+            }
+        }
+        const allRows = allEmployees.map((employee) => {
+            const id = String(employee._id);
+            const status = leaveMap.has(id)
+                ? "Leave"
+                : employeeMap.has(id)
+                ? "Present"
+                : "Absent";
+            return { ...employee.toObject(), status};
+        });
+
+        const counts = {
+            All: allRows.length,
+            Present: allRows.filter((e) => e.status === "Present").length,
+            Absent: allRows.filter((e) => e.status === "Absent").length,
+            Leave: allRows.filter((e) => e.status === "Leave").length,
+        }
+        const filteredRows = status === "All"
+            ? allRows
+            : allRows.filter((e) => e.status === status);
+        const totalEmployees = filteredRows.length;
+        const totalPages = Math.ceil(totalEmployees / pageSize);
+        const employees = filteredRows.slice(skip, skip + pageSize);
+
+        const pageIds = new Set(
+            employees.map((employee) => String(employee._id))
+        );
+
+        const paginatedPresentEmployees = presentEmployees.filter(
+            (employee) => pageIds.has(String(employee._id))
+        );
+
+        const paginatedLeaveEmployees = approvedLeaves
+        .filter(
+            (leave) =>
+            leave.employeeId &&
+            pageIds.has(String(leave.employeeId._id))
+        )
         .map((leave) => ({
             _id: leave.employeeId._id,
             name: leave.employeeId.name,
             email: leave.employeeId.email,
             status: "Leave",
-        })),
-});
+        }));
+
+        res.status(200).json({
+            employees,
+            presentToday: counts.Present,
+            presentEmployees: paginatedPresentEmployees,
+            leaveEmployees: paginatedLeaveEmployees,
+            counts,
+            currentPage,
+            pageSize,
+            totalEmployees,
+            totalPages,
+        });
     } catch (error) {
         console.error("Attendance count error:", error);
         res.status(500).json({
@@ -501,7 +597,6 @@ router.get("/attendance/today", adminAuthMiddleware, permissionMiddleware("atten
         });
     }
 });
-
 
 router.post("/employees",adminAuthMiddleware,permissionMiddleware("employees.create"),async (req, res) => {
         try {
@@ -608,11 +703,61 @@ router.delete("/employees/:id",adminAuthMiddleware,permissionMiddleware("employe
 
 router.get("/leaves", adminAuthMiddleware, permissionMiddleware("leaves.manage"),async (req, res) => {
     try {
-        const leaves = await Leave.find()
-            .populate("employeeId", "name email")
-            .sort({ createdAt: -1 });
+        const { status, search } = req.query;
+        const searchQuery = {};
+        if (search && search.trim()) {
+            const searchText = search.trim();
+            const employees = await Employee.find({
+                $or: [
+                    { name: { $regex: searchText, $options: "i" } },
+                    { email: { $regex: searchText, $options: "i" } },
+                ],
+            }).select("_id");
+            searchQuery.$or = [
+                { employeeId: { $in: employees.map((emp) => emp._id) } },
+                { leaveType: { $regex: searchText, $options: "i" } },
+                { reason: { $regex: searchText, $options: "i" } },
+                { rejectionReason: { $regex: searchText, $options: "i" } },
+                { status: { $regex: searchText, $options: "i" } },
+            ];
+        }
+        const query = { ...searchQuery };
+        if (status && status !== "All") {
+            query.status = status;
+        }
 
-        res.status(200).json({ leaves });
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1,parseInt(req.query.limit) || 10);
+        const counts = {
+            All: await Leave.countDocuments(searchQuery),
+            Pending: await Leave.countDocuments({
+                ...searchQuery,
+                status: "Pending",
+            }),
+            Approved: await Leave.countDocuments({
+                ...searchQuery,
+                status: "Approved",
+            }),
+            Rejected: await Leave.countDocuments({
+                ...searchQuery,
+                status: "Rejected",
+            }),
+        };
+        const totalLeaves = await Leave.countDocuments(query);
+        const totalPages = Math.ceil(totalLeaves / limit);
+        const leaves = await Leave.find(query)
+            .populate("employeeId", "name email")
+            .sort({ createdAt: -1 })
+            .skip((page-1) * limit)
+            .limit(limit);
+        res.status(200).json({ 
+            leaves,
+            currentPage: page,
+            totalPages,
+            totalLeaves,
+            counts,
+        });
+
     } catch (error) {
         console.error("Fetch leaves error:", error);
         res.status(500).json({
@@ -620,7 +765,6 @@ router.get("/leaves", adminAuthMiddleware, permissionMiddleware("leaves.manage")
         });
     }
 });
-
 
 router.put( "/leaves/:id", adminAuthMiddleware, permissionMiddleware("leaves.manage"),async (req, res) => {
         try {
@@ -677,18 +821,34 @@ router.put( "/leaves/:id", adminAuthMiddleware, permissionMiddleware("leaves.man
         }
     }
 );
-
+// for appling leaves 
 router.get("/leaves/my", authMiddleware, async (req, res) => {
     try {
-        const leaves = await Leave.find({
-            employeeId: req.employeeId
-        }).sort({ createdAt: -1 });
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, parseInt(req.query.limit) || 5);
 
-        res.status(200).json({ leaves });
+        const query = {
+            employeeId: req.employeeId,
+        };
+
+        const totalLeaves = await Leave.countDocuments(query);
+        const totalPages = Math.ceil(totalLeaves / limit);
+
+        const leaves = await Leave.find(query)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+
+        res.status(200).json({
+            leaves,
+            currentPage: page,
+            totalPages,
+            totalLeaves,
+        });
     } catch (error) {
         console.error("Fetch my leaves error:", error);
         res.status(500).json({
-            message: "Failed to fetch your leave requests"
+            message: "Failed to fetch your leave requests",
         });
     }
 });
@@ -824,11 +984,7 @@ router.get("/me", adminAuthMiddleware, async (req, res) => {
     }
 });
 // List Admin accounts — Super Admin only
-router.get(
-    "/admins",
-    adminAuthMiddleware,
-    requireSuperAdmin,
-    async (req, res) => {
+router.get( "/admins", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
         try {
             const adminRole = await Role.findOne({
                 name: /^admin$/i,
@@ -864,11 +1020,7 @@ router.get(
 
 
 // Create Admin — Super Admin only
-router.post(
-    "/admins",
-    adminAuthMiddleware,
-    requireSuperAdmin,
-    async (req, res) => {
+router.post("/admins", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
         try {
             const { name, email, password, permissions } = req.body;
 
@@ -983,11 +1135,7 @@ router.post(
 
 
 // Delete Admin — Super Admin only
-router.delete(
-    "/admins/:id",
-    adminAuthMiddleware,
-    requireSuperAdmin,
-    async (req, res) => {
+router.delete( "/admins/:id", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
         try {
             const admin = await Admin.findById(req.params.id)
                 .populate("role", "name");
@@ -1029,11 +1177,7 @@ router.delete(
     }
 );
 // Update an Admin's permissions — Super Admin only
-router.put(
-    "/admins/:id/permissions",
-    adminAuthMiddleware,
-    requireSuperAdmin,
-    async (req, res) => {
+router.put("/admins/:id/permissions", adminAuthMiddleware, requireSuperAdmin, async (req, res) => {
         try {
             const { permissions } = req.body;
 

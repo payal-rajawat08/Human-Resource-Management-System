@@ -9,16 +9,21 @@ function Employees() {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [showAddForm, setShowAddForm] = useState(false);
+    const [formError, setFormError] = useState("");
+    const [listError, setListError] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const [deletingEmployeeId, setDeletingEmployeeId] = useState(null);
     const [newEmployee, setNewEmployee] = useState({
         name: "",
         email: "",
         password: "",
     });
-
-    const [formError, setFormError] = useState("");
-    const [listError, setListError] = useState("");
-    const [submitting, setSubmitting] = useState(false);
-    const [deletingEmployeeId, setDeletingEmployeeId] = useState(null);
+    const [pagination, setPagination] = useState({
+        currentPage: 1,
+        pageSize: 10,
+        totalEmployees: 0,
+        totalPages: 1,
+    })
 
     const navigate = useNavigate();
 
@@ -56,7 +61,7 @@ function Employees() {
             }
 
             const response = await fetch(
-                `${API_BASE_URL}/api/admin/employees`,
+                `${API_BASE_URL}/api/admin/employees?page=${currentPage}&limit=${pageSize}&search=${encodeURIComponent(searchTerm)}`,
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -75,6 +80,12 @@ function Employees() {
             setEmployees(
                 Array.isArray(data.employees) ? data.employees : []
             );
+            setPagination({
+                currentPage: data.currentPage ?? currentPage,
+                pageSize: data.pageSize ?? pageSize,
+                totalEmployees: data.totalEmployees ?? 0,
+                totalPages: data.totalPages ?? 1,
+            });
             setListError("");
         } catch (error) {
             console.error("Fetch employees error:", error);
@@ -84,7 +95,7 @@ function Employees() {
 
     useEffect(() => {
         fetchEmployees();
-    }, []);
+    }, [currentPage, pageSize,searchTerm]);
 
     const handleInputChange = (event) => {
         const { name, value } = event.target;
@@ -210,24 +221,19 @@ function Employees() {
     };
 
     const normalizedQuery = searchTerm.trim().toLowerCase();
-    const filteredEmployees = employees.filter((employee) => {
-        if (!normalizedQuery) return true;
-        return (
-            String(employee.name || "").toLowerCase().includes(normalizedQuery) ||
-            String(employee.email || "").toLowerCase().includes(normalizedQuery)
-        );
-    });
+    const filtredEmployees = employees;
 
-    const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+    const totalPages = Math.max(1, pagination.totalPages);
     const safePage = Math.min(currentPage, totalPages);
-    const paginatedEmployees = filteredEmployees.slice(
-        (safePage - 1) * pageSize,
-        safePage * pageSize
-    );
-    const firstRecord = filteredEmployees.length
+    const paginationEmployees = filtredEmployees;
+    const firstRecord = pagination.totalEmployees
         ? (safePage - 1) * pageSize + 1
         : 0;
-    const lastRecord = Math.min(safePage * pageSize, filteredEmployees.length);
+
+    const lastRecord = Math.min(
+        safePage * pageSize,
+        pagination.totalEmployees
+    );
 
     return (
         <div className="employees-page">
@@ -350,13 +356,13 @@ function Employees() {
             </div>
 
             <p className="employees-record-count" aria-live="polite">
-                Showing {firstRecord}–{lastRecord} of {filteredEmployees.length} employees
+                Showing {firstRecord}–{lastRecord} of {filtredEmployees.length} employees
             </p>
 
             <div className="employees-list">
-                {paginatedEmployees.length === 0 ? (
+                {paginationEmployees.length === 0 ? (
                     <div className="employees-empty">No employees match your search.</div>
-                ) : paginatedEmployees.map((employee) => (
+                ) : paginationEmployees.map((employee) => (
                     <div className="employee-card" key={employee._id}>
                         <div>
                             <h3>{employee.name}</h3>

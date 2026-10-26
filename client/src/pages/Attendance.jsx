@@ -24,6 +24,15 @@ function Attendance() {
     const [statusFilter, setStatusFilter] = useState("All");
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(5);
+    const [totalEmployees, setTotalEmployees] = useState(0);
+    const [serverTotalPages, setServerTotalPages] = useState(1);
+    const [serverCounts, setServerCounts] = useState({
+        All: 0,
+        Present: 0,
+        Absent: 0,
+        Leave: 0,
+    });
+    
 
     useEffect(() => {
         const fetchAttendance = async () => {
@@ -33,14 +42,31 @@ function Attendance() {
                     Authorization: `Bearer ${token}`,
                 };
 
-                const [employeesResponse, attendanceResponse] = await Promise.all([
-                    axios.get(`${API_BASE_URL}/api/admin/employees`, { headers }),
-                    axios.get(`${API_BASE_URL}/api/admin/attendance/today`, { headers }),
-                ]);
+                const attendanceResponse = await axios.get(
+                    `${API_BASE_URL}/api/admin/attendance/today`,
+                    {
+                        headers,
+                        params: {
+                            page: currentPage,
+                            limit: pageSize,
+                            search: searchTerm,
+                            status: statusFilter,
+                        },
+                    }
+                );
 
-                setEmployees(employeesResponse.data.employees || []);
+                setEmployees(attendanceResponse.data.employees || []);
                 setPresentEmployees(attendanceResponse.data.presentEmployees || []);
                 setLeaveEmployees(attendanceResponse.data.leaveEmployees || []);
+
+                setTotalEmployees(attendanceResponse.data.totalEmployees || 0);
+                setServerTotalPages(attendanceResponse.data.totalPages || 1);
+                setServerCounts(attendanceResponse.data.counts || {
+                    All: 0,
+                    Present: 0,
+                    Absent: 0,
+                    Leave: 0,
+                });
                 setError("");
             } catch (err) {
                 console.error("Attendance fetch error:", err);
@@ -73,7 +99,7 @@ function Attendance() {
             socket.off("employee-updated", fetchAttendance);
             socket.disconnect();
         };
-    }, []);
+    }, [currentPage, pageSize, searchTerm, statusFilter]);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -116,37 +142,23 @@ function Attendance() {
         };
     }), [employees, presentMap, leaveMap, currentTime]);
 
-    const counts = useMemo(() => ({
-        All: attendanceRows.length,
-        Present: attendanceRows.filter((row) => row.status === "Present").length,
-        Absent: attendanceRows.filter((row) => row.status === "Absent").length,
-        Leave: attendanceRows.filter((row) => row.status === "Leave").length,
-    }), [attendanceRows]);
-
-    const filteredEmployees = useMemo(() => {
-        const query = searchTerm.trim().toLowerCase();
-
-        return attendanceRows.filter((employee) => {
-            const matchesSearch = `${employee.name || ""} ${employee.email || ""}`
-                .toLowerCase()
-                .includes(query);
-            const matchesStatus = statusFilter === "All" || employee.status === statusFilter;
-            return matchesSearch && matchesStatus;
-        });
-    }, [attendanceRows, searchTerm, statusFilter]);
+    const counts = serverCounts;
 
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, statusFilter, pageSize]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+    const totalPages = Math.max(1,serverTotalPages);
     const safePage = Math.min(currentPage, totalPages);
-    const paginatedEmployees = filteredEmployees.slice(
-        (safePage - 1) * pageSize,
-        safePage * pageSize
+    const paginatedEmployees = attendanceRows;
+    const firstRecord = totalEmployees === 0
+        ? 0
+        : (safePage - 1) * pageSize + 1;
+    
+    const lastRecord = Math.min(
+        safePage * pageSize,
+        totalEmployees
     );
-    const firstRecord = filteredEmployees.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
-    const lastRecord = Math.min(safePage * pageSize, filteredEmployees.length);
 
     if (loading) {
         return (
@@ -248,7 +260,7 @@ function Attendance() {
                         <p>Search employees and filter by attendance status.</p>
                     </div>
                     <span className="attendance-result-count">
-                        {filteredEmployees.length} {filteredEmployees.length === 1 ? "record" : "records"}
+                        {totalEmployees} {totalEmployees === 1 ? "record" : "records"}
                     </span>
                 </div>
 
@@ -334,7 +346,7 @@ function Attendance() {
                     <div className="attendance-pagination-summary">
                         <span>
                             Showing <strong>{firstRecord}–{lastRecord}</strong> of{" "}
-                            <strong>{filteredEmployees.length}</strong> employees
+                            <strong>{totalEmployees}</strong> employees
                         </span>
                         <label className="attendance-page-size">
                             <span>Rows per page</span>

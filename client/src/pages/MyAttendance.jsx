@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
@@ -24,8 +23,8 @@ function MyAttendance() {
     const [pageSize, setPageSize] = useState(10);
 
     useEffect(() => {
-        setCurrentPage(1);
-    }, [month, year]);
+    setCurrentPage(1);
+}, [month, year]);
 
     useEffect(() => {
         const fetchAttendance = async () => {
@@ -34,9 +33,8 @@ function MyAttendance() {
 
             try {
                 const token = sessionStorage.getItem("token");
-
                 const response = await axios.get(`${API}/monthly`, {
-                    params: { month, year },
+                    params: { month, year, page: currentPage, limit: pageSize },
                     headers: { Authorization: `Bearer ${token}` },
                 });
 
@@ -52,7 +50,7 @@ function MyAttendance() {
         };
 
         fetchAttendance();
-    }, [month, year]);
+    }, [month, year, currentPage, pageSize]);
     useEffect(() => {
     const token = sessionStorage.getItem("token");
     const employeeId = sessionStorage.getItem("employeeId");
@@ -77,7 +75,7 @@ function MyAttendance() {
 
         try {
             const response = await axios.get(`${API}/monthly`, {
-                params: { month, year },
+                params: { month, year, page: currentPage, limit: pageSize },
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -104,15 +102,15 @@ function MyAttendance() {
 
     const summary = data?.summary;
     const dailyRecords = data?.dailyRecords || [];
-    const totalPages = Math.max(1, Math.ceil(dailyRecords.length / pageSize));
+    const totalPages = Math.max(1, data?.totalPages || 1);
     const safePage = Math.min(currentPage, totalPages);
-    const paginatedRecords = dailyRecords.slice(
-        (safePage - 1) * pageSize,
-        safePage * pageSize
-    );
-    const firstRecord = dailyRecords.length ? (safePage - 1) * pageSize + 1 : 0;
-    const lastRecord = Math.min(safePage * pageSize, dailyRecords.length);
-
+    const paginatedRecords = dailyRecords;
+    const firstRecord = data?.totalDays
+       ? (safePage - 1) * pageSize + 1
+       : 0;
+       const lastRecord = firstRecord === 0
+       ? 0
+       : firstRecord + dailyRecords.length - 1;
     return (
         <div className="my-attendance-page">
             <div className="my-attendance-card">
@@ -282,7 +280,7 @@ function MyAttendance() {
                             <footer className="my-attendance-pagination">
                                 <span className="my-attendance-pagination-info">
                                     Showing <strong>{firstRecord}–{lastRecord}</strong> of{" "}
-                                    <strong>{dailyRecords.length}</strong> days
+                                    <strong>{data?.totalDays || 0}</strong> days
                                 </span>
                                 <div className="my-attendance-pagination-controls">
                                     <label>

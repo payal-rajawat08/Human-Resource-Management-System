@@ -17,17 +17,19 @@ function ApplyLeave() {
     // Pagination for the employee's leave request history
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(5);
+    const [backendTotalPages, setBackendTotalPages] = useState(1);
+    const [backendTotalLeaves, setBackendTotalLeaves] = useState(0);
 
-    const totalPages = Math.max(1, Math.ceil(myLeaves.length / pageSize));
+    const totalPages = Math.max(1, backendTotalPages);
     const safePage = Math.min(currentPage, totalPages);
-    const paginatedLeaves = myLeaves.slice(
-        (safePage - 1) * pageSize,
-        safePage * pageSize
-    );
-    const firstRecord = myLeaves.length === 0
+    const paginatedLeaves = myLeaves;
+    const firstRecord = backendTotalLeaves === 0
         ? 0
         : (safePage - 1) * pageSize + 1;
-    const lastRecord = Math.min(safePage * pageSize, myLeaves.length);
+
+    const lastRecord = firstRecord === 0
+        ? 0
+        : firstRecord + myLeaves.length - 1;
 
     const navigate = useNavigate();
 
@@ -43,7 +45,7 @@ function ApplyLeave() {
                 }
 
                 const response = await fetch(
-                    `${API_BASE_URL}/api/admin/leaves/my`,
+                    `${API_BASE_URL}/api/admin/leaves/my?page=${currentPage}&limit=${pageSize}`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -55,6 +57,8 @@ function ApplyLeave() {
 
                 if (response.ok) {
                     setMyLeaves(data.leaves || []);
+                    setBackendTotalPages(data.totalPages || 1);
+                    setBackendTotalLeaves(data.totalLeaves || 0);
                 } else {
                     console.error("Failed to fetch leaves:", data.message);
                 }
@@ -84,7 +88,7 @@ function ApplyLeave() {
             socket.off("leave-updated", handleLeaveUpdated);
             socket.disconnect();
         };
-    }, [navigate]);
+    }, [navigate, currentPage, pageSize]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -146,13 +150,16 @@ function ApplyLeave() {
             setIsFormOpen(false);
 
             // Refresh the employee's requests immediately after a successful submission.
+            setCurrentPage(1);
             const refreshResponse = await fetch(
-                `${API_BASE_URL}/api/admin/leaves/my`,
+                `${API_BASE_URL}/api/admin/leaves/my?page=${currentPage}&limit=${pageSize}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             const refreshData = await refreshResponse.json();
             if (refreshResponse.ok) {
                 setMyLeaves(refreshData.leaves || []);
+                setBackendTotalPages(refreshData.totalPages || 1);
+                setBackendTotalLeaves(refreshData.totalLeaves || 0);
             }
         } catch (error) {
             console.error("Apply leave error:", error);
@@ -308,7 +315,7 @@ function ApplyLeave() {
                         <p>Track the status and details of your submitted applications.</p>
                     </div>
                     <span className="my-leave-total">
-                        {myLeaves.length} {myLeaves.length === 1 ? "request" : "requests"}
+                        {backendTotalLeaves} {backendTotalLeaves === 1 ? "request" : "requests"}
                     </span>
                 </div>
 
@@ -372,7 +379,7 @@ function ApplyLeave() {
                     <footer className="my-leave-pagination">
                         <div className="my-leave-pagination-info">
                             Showing <strong>{firstRecord}–{lastRecord}</strong> of{" "}
-                            <strong>{myLeaves.length}</strong> requests
+                            <strong>{backendTotalLeaves}</strong> requests
                         </div>
 
                         <div className="my-leave-pagination-actions">

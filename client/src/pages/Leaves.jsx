@@ -11,25 +11,41 @@ function Leaves() {
     const [filter, setFilter] = useState("All");
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
+    const [backendTotalPages, setBackendTotalPages] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [updatingId, setUpdatingId] = useState(null);
     const [rejectingLeave, setRejectingLeave] = useState(null);
     const [rejectionReason, setRejectionReason] = useState("");
+    const [backendTotalLeaves, setBackendTotalLeaves] = useState(0);
+    const [backendCounts, setBackendCounts] = useState({
+        All: 0,
+        Pending: 0,
+        Approved: 0,
+        Rejected: 0,
+    });
 
     useEffect(() => {
         const fetchLeaves = async () => {
             try {
                 const token = sessionStorage.getItem("adminToken");
                 const response = await axios.get(
-                    `${API_BASE_URL}/api/admin/leaves`,
+                    `${API_BASE_URL}/api/admin/leaves?page=${currentPage}&limit=${pageSize}&status=${encodeURIComponent(filter)}&search=${encodeURIComponent(searchTerm)}`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
                         },
                     }
                 );
-
                 setLeaves(response.data.leaves || []);
+                setBackendTotalPages(response.data.totalPages || 1);
+                setBackendTotalLeaves(response.data.totalLeaves || 0);
+                setBackendCounts(response.data.counts || {
+                    All: 0,
+                    Pending: 0,
+                    Approved: 0,
+                    Rejected: 0,
+                });
+  
                 setError("");
             } catch (err) {
                 console.error("Error fetching leaves:", err);
@@ -54,7 +70,7 @@ function Leaves() {
             socket.off("leave-updated", handleLeaveUpdated);
             socket.disconnect();
         };
-    }, []);
+    }, [currentPage, pageSize, filter, searchTerm]);
 
     const updateLeave = async (id, status, reason = "") => {
         try {
@@ -77,7 +93,7 @@ function Leaves() {
             );
 
             const updatedLeave = response.data.leave;
-
+            
             setLeaves((previousLeaves) =>
                 previousLeaves.map((leave) =>
                     leave._id === id
@@ -124,47 +140,23 @@ function Leaves() {
 
         updateLeave(rejectingLeave._id, "Rejected", rejectionReason);
     };
-
-    const counts = {
-        All: leaves.length,
-        Pending: leaves.filter((leave) => leave.status === "Pending").length,
-        Approved: leaves.filter((leave) => leave.status === "Approved").length,
-        Rejected: leaves.filter((leave) => leave.status === "Rejected").length,
-    };
-
-    const filteredLeaves = leaves.filter((leave) => {
-        const matchesFilter = filter === "All" || leave.status === filter;
-        const searchText = [
-            leave.employeeId?.name,
-            leave.employeeId?.email,
-            leave.leaveType,
-            leave.reason,
-            leave.rejectionReason,
-            leave.status,
-        ]
-            .join(" ")
-            .toLowerCase();
-
-        return (
-            matchesFilter &&
-            searchText.includes(searchTerm.trim().toLowerCase())
-        );
-    });
+    const counts = backendCounts;
+    const filteredLeaves = leaves;
 
     useEffect(() => {
         setCurrentPage(1);
     }, [filter, searchTerm, pageSize]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredLeaves.length / pageSize));
+    const totalPages = Math.max(1, backendTotalPages);
     const safePage = Math.min(currentPage, totalPages);
-    const paginatedLeaves = filteredLeaves.slice(
-        (safePage - 1) * pageSize,
-        safePage * pageSize
-    );
+    const paginatedLeaves = filteredLeaves;
+
     const firstRecord = filteredLeaves.length === 0
-        ? 0
-        : (safePage - 1) * pageSize + 1;
-    const lastRecord = Math.min(safePage * pageSize, filteredLeaves.length);
+    ? 0
+    : (safePage - 1) * pageSize + 1;
+    const lastRecord = firstRecord === 0
+    ? 0
+    : firstRecord + filteredLeaves.length === 0
 
     const formatDate = (value) => {
         if (!value) return "—";
@@ -190,7 +182,7 @@ function Leaves() {
 
                 <div className="leave-header-count">
                     <span>Total Requests</span>
-                    <strong>{leaves.length}</strong>
+                    <strong>{backendTotalLeaves}</strong>
                     <small>Across all statuses</small>
                 </div>
             </header>
@@ -386,7 +378,7 @@ function Leaves() {
                         <div className="leave-pagination-summary">
                             <span className="leave-pagination-count">
                                 Showing <strong>{firstRecord}–{lastRecord}</strong> of{" "}
-                                <strong>{filteredLeaves.length}</strong> requests
+                                <strong>{backendTotalLeaves}</strong> requests
                             </span>
                             <label className="leave-page-size">
                                 <span>Rows per page</span>

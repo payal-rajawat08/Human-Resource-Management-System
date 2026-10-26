@@ -647,7 +647,8 @@ router.get("/sessions/current", authMiddleware, async (req, res) => {
 router.get("/monthly", authMiddleware, async (req, res) => {
     try {
         const { month, year } = req.query;
-
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, parseInt(req.query.limit) || 10);
         const selectedMonth = Number(month);
         const selectedYear = Number(year);
 
@@ -775,6 +776,13 @@ for (const day of dailyMap.values()) {
 const dailyRecords = Array.from(dailyMap.values()).sort(
     (a, b) => a.date.localeCompare(b.date)
 );
+const totalDays = dailyRecords.length;
+const totalPages = Math.ceil(totalDays / limit);
+
+const paginatedRecords = dailyRecords.slice(
+    (page - 1) * limit,
+    page * limit
+);
 
 const summary = dailyRecords.reduce(
     (result, day) => {
@@ -813,12 +821,14 @@ return res.status(200).json({
     month: selectedMonth,
     year: selectedYear,
     totalRecords: records.length,
-    totalDays: dailyRecords.length,
+    totalDays,
+    currentPage:page,
+    totalPages,
+    limit,
     summary,
-    dailyRecords,
+    dailyRecords: paginatedRecords,
     records,
 });
-
     } catch (error) {
         console.error("Monthly attendance error:", error);
         return res.status(500).json({
