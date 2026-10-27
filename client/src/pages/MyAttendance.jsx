@@ -98,7 +98,7 @@ function MyAttendance() {
         socket.off("work-session-updated", refreshAttendance);
         socket.disconnect();
     };
-}, [month, year]);
+}, [month, year, currentPage, pageSize]);
 
     const summary = data?.summary;
     const dailyRecords = data?.dailyRecords || [];

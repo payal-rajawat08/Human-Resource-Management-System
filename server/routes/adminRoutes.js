@@ -13,6 +13,7 @@ import Break from "../models/Break.js";
 import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import ShareEvent from "../models/ShareEvent.js";
+import LeavePolicy from "../models/LeavePolicy.js";
 
 const router = express.Router();
 async function requireSuperAdmin(req, res, next) {
@@ -600,7 +601,19 @@ router.get("/attendance/today", adminAuthMiddleware, permissionMiddleware("atten
 
 router.post("/employees",adminAuthMiddleware,permissionMiddleware("employees.create"),async (req, res) => {
         try {
-            const { name, email, password } = req.body;
+            const {
+                name, 
+                email, 
+                password,
+                casualLeave = 0,
+                sickLeave = 0,
+                earnedLeave = 0,
+                otherLeave = 0,
+                casualLeaveMonthlyLimit = 0,
+                sickLeaveMonthlyLimit = 0,
+                earnedLeaveMonthlyLimit = 0,
+                otherLeaveMonthlyLimit = 0,
+            } = req.body;
 
             const existingEmployee = await Employee.findOne({ email });
 
@@ -616,6 +629,18 @@ router.post("/employees",adminAuthMiddleware,permissionMiddleware("employees.cre
                 name,
                 email,
                 password: hashedPassword,
+            });
+
+            await LeavePolicy.create({
+                employeeId: employee._id,
+                casualLeave,
+                sickLeave,
+                earnedLeave,
+                otherLeave,
+                casualLeaveMonthlyLimit,
+                sickLeaveMonthlyLimit,
+                earnedLeaveMonthlyLimit,
+                otherLeaveMonthlyLimit,
             });
 
             req.io.emit("employee-updated", {
@@ -643,7 +668,14 @@ router.post("/employees",adminAuthMiddleware,permissionMiddleware("employees.cre
 router.put("/employees/:id",adminAuthMiddleware,permissionMiddleware("employees.edit"),
     async (req, res) => {
         try {
-            const { name, email } = req.body;
+            const {
+                name,
+                email,
+                casualLeave,
+                sickLeave,
+                earnedLeave,
+                otherLeave,
+             } = req.body;
 
             const employee = await Employee.findByIdAndUpdate(
                 req.params.id,
@@ -656,6 +688,16 @@ router.put("/employees/:id",adminAuthMiddleware,permissionMiddleware("employees.
                     message: "Employee not found",
                 });
             }
+            await LeavePolicy.findOneAndUpdate(
+                { employeeId: employee._id },
+                {
+                    casualLeave,
+                    sickLeave,
+                    earnedLeave,
+                    otherLeave,
+                },
+                { new: true, upsert: true }
+            );
             req.io.emit("employee-updated", {
                 employeeId: employee._id.toString(),
                 eventType: "updated",
@@ -857,6 +899,111 @@ router.post("/leaves", authMiddleware, async (req, res) => {
     try {
         
         const { leaveType, startDate, endDate, reason  } = req.body;
+        if (!["Casual Leave", "Sick Leave", "Earned Leave", "Other"].includes(leaveType)) {
+            return res.status(400).json({
+                message: "Invalid leave type",
+            });
+        }
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (
+            !startDate ||
+            !endDate ||
+            Number.isNaN(start.getTime()) ||
+            Number.isNaN(end.getTime()) ||
+            start > end
+        ) {
+            return res.status(400).json({
+                message: "Please provide valid leave dates",
+            });
+        }
+        const leavePolicy = await LeavePolicy.findOne({
+            employeeId: req.employeeId,
+        });
+
+        if (!leavePolicy) {
+            return res.status(404).json({
+                message: "Leave policy not found for this employee",
+            });
+        }
+        const quotaField = {
+            "Casual Leave": "casualLeave",
+            "Sick Leave": "sickLeave",
+            "Earned Leave": "earnedLeave",
+            "Other": "otherLeave",
+        };
+
+        const assignedQuota = leavePolicy[quotaField[leaveType]];
+        const monthlyLimitField = {
+            "Casual Leave": "casualLeaveMonthlyLimit",
+            "Sick Leave": "sickLeaveMonthlyLimit",
+            "Earned Leave": "earnedLeaveMonthlyLimit",
+            "Other": "otherLeaveMonthlyLimit", 
+        };
+
+        const monthlyLimit = leavePolicy[monthlyLimitField[leaveType]];
+        const requestedDays =Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+        const usedLeaves = await Leave.find({
+            employeeId: req.employeeId,
+            leaveType,
+            status: { $in: ["Pending", "Approved"] },
+        });
+        const usedDays = usedLeaves.reduce((total, leave) => {
+            const leaveStart = new Date(leave.startDate);
+            const leaveEnd = new Date(leave.endDate);
+
+        const days = Math.floor((leaveEnd - leaveStart) / (1000 * 60 * 60 * 24)) + 1;
+        return total + days;
+        }, 0);
+        const usedDaysByMonth = new Map();
+        const addDaysToMonthMap = (fromDate, toDate, map) => {
+            const current = new Date(Date.UTC(
+                fromDate.getUTCFullYear(),
+                fromDate.getUTCMonth(),
+                fromDate.getUTCDate()
+            ));
+            const last = Date.UTC(
+                toDate.getUTCFullYear(),
+                toDate.getUTCMonth(),
+                toDate.getUTCDate()
+            );
+            while (current.getTime() <= last) {
+                const key = `${current.getUTCFullYear()}-${current.getUTCMonth()}`;
+                map.set(key, (map.get(key) || 0) + 1);
+                current.setUTCDate(current.getUTCDate() + 1);
+            }
+        };
+        usedLeaves.forEach((leave) => {
+            addDaysToMonthMap(
+                new Date(leave.startDate),
+                new Date(leave.endDate),
+                usedDaysByMonth
+            );
+        });
+        const requestedDaysByMonth = new Map();
+        addDaysToMonthMap(start, end, requestedDaysByMonth);
+
+        for (const [month, days] of requestedDaysByMonth) {
+            const alreadyUsed = usedDaysByMonth.get(month) || 0;
+            if (alreadyUsed + days > monthlyLimit) {
+                return res.status(400).json({
+                    message: `Monthly ${leaveType} limit exceeded. Monthly limit: ${monthlyLimit} days. 
+                    Already used: ${alreadyUsed} days. Requested: ${days} days in this month.`,
+                });
+            }
+        }
+
+        if (requestedDays > remainingLeaves) {
+            return res.status(400).json({
+                message: `You have insufficient ${leaveType} balance.
+
+                Assigned quota: ${assignedQuota} days
+                Already used: ${usedDays} days
+                Requested: ${requestedDays} days
+                Remaining: ${Math.max(0, remainingLeaves)} days`,
+            });
+        }
 
         const leave = await Leave.create({
             employeeId: req.employeeId,

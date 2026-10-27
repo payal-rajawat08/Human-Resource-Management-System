@@ -816,18 +816,15 @@ console.log(
         hasOpenSession: day.hasOpenSession,
     }))
 );
-
 return res.status(200).json({
+    dailyRecords: paginatedRecords,
+    summary,
+    totalDays,
+    totalPages,
     month: selectedMonth,
     year: selectedYear,
-    totalRecords: records.length,
-    totalDays,
-    currentPage:page,
-    totalPages,
+    currentPage: page,
     limit,
-    summary,
-    dailyRecords: paginatedRecords,
-    records,
 });
     } catch (error) {
         console.error("Monthly attendance error:", error);

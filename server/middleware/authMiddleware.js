@@ -10,7 +10,6 @@ const authMiddleware = async (req, res, next) => {
                 message: "Employee authentication required",
             });
         }
-
         const token = authHeader.slice(7).trim();
 
         if (!token) {

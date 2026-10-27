@@ -99,17 +99,22 @@ function App() {
                 }
             />
 
-            {/* Employee Management */}
-            <Route
-                path="/employees"
-                element={
-                    <AdminPermissionRoute permission="employees.view">
-                        <Employees />
-                    </AdminPermissionRoute>
-                }
-            />
-
-            {/* Attendance */}
+           {/* Admin Panel Pages */}
+           <Route
+               element={
+                  isAdmin || isSuperAdmin
+                      ? <DashboardLayout />
+                      : <Navigate to="/login" replace />
+               }
+            >
+           <Route
+               path="/employees"
+               element={
+                   <AdminPermissionRoute permission="employees.view">
+                       <Employees />
+                   </AdminPermissionRoute>
+               }
+               />
             <Route
                 path="/attendance"
                 element={
@@ -117,9 +122,7 @@ function App() {
                         <Attendance />
                     </AdminPermissionRoute>
                 }
-            />
-
-            {/* Leave Management */}
+                />
             <Route
                 path="/leaves"
                 element={
@@ -127,7 +130,8 @@ function App() {
                         <Leaves />
                     </AdminPermissionRoute>
                 }
-            />
+                />
+            </Route>
 
             {/* Employee's Today Details */}
             <Route

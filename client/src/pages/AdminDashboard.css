@@ -431,4 +431,20 @@
         padding: 15px;
     }
 }
+.back-dashboard-btn {
+    display: inline-block;
+    margin: 16px 30px;
+    padding: 10px 16px;
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background-color 0.2s ease;
+}
 
+.back-dashboard-btn:hover {
+    background-color: #1d4ed8;
+}

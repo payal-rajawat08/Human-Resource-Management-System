@@ -17,7 +17,6 @@ const permissionMiddleware = (requiredPermission) => {
                     message: "Your account is inactive.",
                 });
             }
-
             if (!admin.role) {
                 return res.status(403).json({
                     message: "Role not assigned.",

@@ -17,6 +17,14 @@ function Employees() {
         name: "",
         email: "",
         password: "",
+        casualLeave: 0,
+        sickLeave: 0,
+        earnedLeave: 0,
+        otherLeave: 0,
+        casualLeaveMonthlyLimit: 0,
+        sickLeaveMonthlyLimit: 0,
+        earnedLeaveMonthlyLimit: 0,
+        otherLeaveMonthlyLimit: 0,
     });
     const [pagination, setPagination] = useState({
         currentPage: 1,
@@ -156,6 +164,10 @@ function Employees() {
                 name: "",
                 email: "",
                 password: "",
+                casualLeave: 0,
+                sickLeave: 0,
+                earnedLeave: 0,
+                otherLeave: 0,
             });
 
             setShowAddForm(false);
@@ -298,6 +310,94 @@ function Employees() {
                             onChange={handleInputChange}
                             required
                         />
+                        <label htmlFor="casualLeave">Casual Leave</label>
+                        <input
+                            id="casualLeave"
+                            name="casualLeave"
+                            type="number"
+                            min="0"
+                            value={newEmployee.casualLeave}
+                            onChange={handleInputChange}
+                            required
+                        />
+                        <label htmlFor="sickLeave">Sick Leave</label>
+                        <input
+                            id="sickLeave"
+                            name="sickLeave"
+                            type="number"
+                            min="0"
+                            value={newEmployee.sickLeave}
+                            onChange={handleInputChange}
+                            required
+                        />
+                        <label htmlFor="earnedLeave">Earned Leave</label>
+                        <input
+                            id="earnedLeave"
+                            name="earnedLeave"
+                            type="number"
+                            min="0"
+                            value={newEmployee.earnedLeave}
+                            onChange={handleInputChange}
+                            required
+                        />
+                        <label htmlFor="otherLeave">Other Leave</label>
+                        <input
+                            id="otherLeave"
+                            name="otherLeave"
+                            type="number"
+                            min="0"
+                            value={newEmployee.otherLeave}
+                            onChange={handleInputChange}
+                            required
+                        />
+                        <label htmlFor="casualLeaveMonthlyLimit">
+                            Casual Leave Monthly Limit
+                            </label>
+                            <input
+                                id="casualLeaveMonthlyLimit"
+                                name="casualLeaveMonthlyLimit"
+                                type="number"
+                                min="0"
+                                value={newEmployee.casualLeaveMonthlyLimit}
+                                onChange={handleInputChange}
+                                required
+                            />
+                        <label htmlFor="sickLeaveMonthlyLimit">
+                            Sick Leave Monthly Limit
+                            </label>
+                            <input
+                                id="sickLeaveMonthlyLimit"
+                                name="sickLeaveMonthlyLimit"
+                                type="number"
+                                min="0"
+                                value={newEmployee.sickLeaveMonthlyLimit}
+                                onChange={handleInputChange}
+                                required
+                            />
+                        <label htmlFor="earnedLeaveMonthlyLimit">
+                            Earned Leave Monthly Limit
+                            </label>
+                            <input
+                                id="earnedLeaveMonthlyLimit"
+                                name="earnedLeaveMonthlyLimit"
+                                type="number"
+                                min="0"
+                                value={newEmployee.earnedLeaveMonthlyLimit}
+                                onChange={handleInputChange}
+                                required
+                            />
+                        <label htmlFor="otherLeaveMonthlyLimit">
+                            Other Leave Monthly Limit
+                        </label>
+                        <input
+                            id="otherLeaveMonthlyLimit"
+                            name="otherLeaveMonthlyLimit"
+                            type="number"
+                            min="0"
+                            value={newEmployee.otherLeaveMonthlyLimit}
+                            onChange={handleInputChange}
+                            required
+                        />
 
                         {formError && (
                             <p className="employee-form-error" role="alert">
@@ -363,7 +463,7 @@ function Employees() {
                 {paginationEmployees.length === 0 ? (
                     <div className="employees-empty">No employees match your search.</div>
                 ) : paginationEmployees.map((employee) => (
-                    <div className="employee-card" key={employee._id}>
+                    <div className="employee-card" key={employee._id}>e
                         <div>
                             <h3>{employee.name}</h3>
                             <h3>{employee.email}</h3>

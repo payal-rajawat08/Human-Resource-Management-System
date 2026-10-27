@@ -853,3 +853,63 @@
         border-radius: 16px;
     }
 }
+.apply-leave-error-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2000;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    width: calc(100% - 48px);
+    max-width: 440px;
+    box-sizing: border-box;
+    padding: 12px 14px;
+
+    background: #fff5f5;
+    color: #b42318;
+    border: 1px solid #fecdca;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.apply-leave-error-popup button {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: #b42318;
+    font-size: 19px;
+    cursor: pointer;
+}
+.leave-error-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.leave-error-content strong {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 6px;
+    color: #b42318;
+}
+
+.leave-error-content p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}

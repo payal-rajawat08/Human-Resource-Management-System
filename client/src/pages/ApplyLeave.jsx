@@ -4,6 +4,7 @@ import "./ApplyLeave.css";
 import { io } from "socket.io-client";
 import { API_BASE_URL } from "../config/api";
 
+
 function ApplyLeave() {
     const [leaveType, setLeaveType] = useState("Casual Leave");
     const [startDate, setStartDate] = useState("");
@@ -13,6 +14,7 @@ function ApplyLeave() {
     const [submitting, setSubmitting] = useState(false);
     const [loadingLeaves, setLoadingLeaves] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
 
     // Pagination for the employee's leave request history
     const [currentPage, setCurrentPage] = useState(1);
@@ -138,7 +140,7 @@ function ApplyLeave() {
             const data = await response.json();
 
             if (!response.ok) {
-                alert(data.message || "Failed to apply for leave");
+                setErrorMessage(data.message || "Failed to apply for leave");
                 return;
             }
 
@@ -180,7 +182,7 @@ function ApplyLeave() {
                 year: "numeric",
             });
     };
-
+    
     const getStatusClass = (status = "") => {
         const normalized = status.toLowerCase();
         if (normalized === "approved") return "approved";
@@ -220,6 +222,22 @@ function ApplyLeave() {
                         aria-modal="true"
                         aria-labelledby="leave-modal-title"
                     >
+                    {errorMessage && (
+                        <div className="apply-leave-error-popup" role="alert">
+                            <div className="leave-error-content">
+                                <strong>Insufficient Leave Balance</strong>
+                                <p>{errorMessage}</p>
+                                </div>
+
+                                <button
+                                type="button"
+                                onClick={() => setErrorMessage("")}
+                                aria-label="Close error message"
+                                >
+                                    ×
+                                </button>
+                                </div>
+                        )}
                         <button
                             type="button"
                             className="apply-leave-modal-close"

@@ -748,9 +748,6 @@ const handleLogout = async () => {
 
     return (
         <div className="employee-today-page">
-            <button className="logout-btn" onClick={handleLogout}>
-                Logout
-            </button>
 
             <div className="employee-today-card">
                 <div className="employee-header">

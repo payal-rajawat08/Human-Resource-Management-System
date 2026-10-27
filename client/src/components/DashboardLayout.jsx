@@ -79,6 +79,13 @@ function DashboardLayout() {
         "User";
 
     const isEmployeeToday = location.pathname === "/employee-today";
+    const isDashboardHome =
+        location.pathname === "/admin-dashboard" ||
+        location.pathname === "/superadmin-dashboard";
+    const showBackToDashboard = !isEmployee && !isDashboardHome;
+    const dashboardPath = isSuperAdmin
+        ? "/superadmin-dashboard"
+        : "/admin-dashboard";
 
     return (
         <div className="admin-dashboard">
@@ -155,6 +162,15 @@ function DashboardLayout() {
             </aside>
 
             <main className="admin-main">
+                {showBackToDashboard && (
+                    <button
+                       type="button"
+                       className="back-dashboard-btn"
+                       onClick={() => navigate(dashboardPath)}
+                    >
+                        ← Back to Dashboard
+                    </button>
+                )}
                 <header className="admin-navbar">
                     <div>
                         <h3>HRMS Workspace</h3>
@@ -169,7 +185,7 @@ function DashboardLayout() {
                         </button>
                     </div>
                 </header>
-
+               
                 <div
                     style={{
                         display:

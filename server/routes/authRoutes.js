@@ -198,6 +198,34 @@ router.post("/login", async (req, res) => {
         });
     }
 });
+// EXISTING EMPLOYEE LOGIN
+router.post("/login", async (req, res) => {
+    // tumhara existing login code
+});
+
+// EMPLOYEE LOGOUT
+router.post("/auth/logout", authMiddleware, async (req, res) => {
+    try {
+        const employeeId = req.employeeId;
+
+        if (employeeId) {
+            await Employee.findByIdAndUpdate(employeeId, {
+                isLoggedIn: false,
+                lastAppLogoutAt: new Date(),
+            });
+        }
+
+        return res.status(200).json({
+            message: "Logout successful",
+        });
+    } catch (error) {
+        console.error("Logout error:", error);
+
+        return res.status(500).json({
+            message: "Logout failed",
+        });
+    }
+});
 
 //  FORGOT PASSWORD
 router.post("/forgot-password", async (req, res) => {
