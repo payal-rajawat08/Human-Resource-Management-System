@@ -18,6 +18,8 @@ import "./models/Break.js";
 import connectDb from "./config/db.js";
 import sweepSessions from "./job/sessionSweeper.js";
 
+import salaryRoutes from "./routes/salaryRoutes.js";
+
 dotenv.config();
 
 const app = express();
@@ -322,6 +324,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api", officeIpRoutes);
 app.use("/api", attendanceRoutes);
 app.use("/api", authRoutes);
+app.use("/api", salaryRoutes);
 
 app.get("/my-ip", (req, res) => {
     res.send(req.ip);
