@@ -19,6 +19,7 @@ function AdminDashboard() {
     const [presentEmployees, setPresentEmployees] = useState([]);
     const [selectedCard, setSelectedCard] = useState(null);
     const [adminPermissions, setAdminPermissions] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     // Read login details from the current browser tab
     const token = sessionStorage.getItem("adminToken");
@@ -73,6 +74,43 @@ function AdminDashboard() {
 
         fetchDashboard();
     }, [token, role, navigate]);
+
+    useEffect(() => {
+        if (!token || role !== "admin") return;
+
+        if (!adminPermissions.includes("payroll.manage")) return;
+
+        const headers = {
+            Authorization: `Bearer ${token}`,
+        };
+
+        const fetchNotifications = async () => {
+            try {
+                const response = await axios.get(
+                    `${API_BASE_URL}/api/admin/notifications/my`,
+                    { headers }
+                );
+                setUnreadCount(response.data.unreadCount || 0);
+            } catch (error) {
+                console.error("Failed to fetch notifications:", error);
+            }
+        };
+
+        fetchNotifications();
+
+        const socket = io(API_BASE_URL, {
+            auth: {
+                token,
+                role: "admin",
+            },
+        });
+
+        socket.on("admin-payroll-notification", fetchNotifications);
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [token, role, adminPermissions]);
 
     useEffect(() => {
         if (!token || role !== "admin") return;
@@ -249,6 +287,30 @@ function AdminDashboard() {
                     {adminPermissions.includes("leaves.manage") && (
                         <Link to="/leaves">📅 Leaves</Link>
                     )}
+
+                    {adminPermissions.includes("payroll.manage") && (
+                    <>
+                        <Link
+                        className={location.pathname === "/payroll" ? "active" : ""}
+                        to="/payroll"
+                        >
+                            💰 Payroll Management
+                        </Link>
+
+                        <Link
+                        className={location.pathname === "/admin-notifications" ? "active" : ""}
+                        to="/admin-notifications"
+                        >
+                        <span>🔔 Notifications</span>
+
+                        {unreadCount > 0 && (
+                            <span className="sidebar-notification-count">
+                                {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                        )}
+                    </Link>
+                </>
+            )}
                 </nav>
             </aside>
 

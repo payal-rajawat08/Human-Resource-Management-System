@@ -28,6 +28,8 @@ function AdminEmployeeToday() {
     const pendingCandidatesRef = useRef([]);
     const [screenStatus, setScreenStatus] = useState("Not connected");
     const [isWatching, setIsWatching] = useState(false);
+    const [isScreenMinimized, setIsScreenMinimized] = useState(false);
+    const [isScreenMaximized, setIsScreenMaximized] = useState(false);
     const pageSize = 5;
 
     const getToken = () => sessionStorage.getItem("adminToken");
@@ -450,25 +452,126 @@ function AdminEmployeeToday() {
                         </div>
                     </div>
                 </section>
+                
 
-                <section className="screen-viewer" style={{ margin: "24px 0", padding: "20px", border: "1px solid #e5e7eb", borderRadius: "12px" }}>
-                    <h3 style={{ marginTop: 0 }}>Employee Live Screen</h3>
+                <section
+                    className={`screen-viewer screen-viewer--compact ${
+                        isScreenMaximized ? "screen-viewer--maximized" : ""
+                    } ${isWatching && isScreenMinimized ? "screen-viewer--minimized" : ""}`}
+                >
+                    {isWatching && isScreenMinimized ? (
+                        <div className="screen-minimized-bar">
+                            <span className="screen-live-indicator">
+                                <span className="screen-live-dot screen-live-dot--active" />
+                                Live screen minimized
+                            </span>
+                            <button
+                                type="button"
+                                className="screen-icon-button"
+                                aria-label="Restore live screen"
+                                title="Restore screen"
+                                onClick={() => setIsScreenMinimized(false)}
+                            >
+                                ⛶
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="screen-viewer-header">
+                                <div className="screen-title-group">
+                                    <span className={`screen-live-dot ${isWatching ? "screen-live-dot--active" : ""}`} />
+                                    <div>
+                                        <h3>Live Screen</h3>
+                                        <p className="screen-viewer-subtitle">
+                                            {isWatching ? "Viewing employee screen" : "View the employee's screen in real time"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="screen-header-controls">
+                                    {isWatching && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                className="screen-icon-button"
+                                                aria-label="Minimize screen"
+                                                title="Minimize"
+                                                onClick={() => {
+                                                    setIsScreenMaximized(false);
+                                                    setIsScreenMinimized(true);
+                                                }}
+                                            >
+                                                −
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="screen-icon-button"
+                                                aria-label="Maximize screen"
+                                                title="Maximize"
+                                                onClick={() => setIsScreenMaximized(true)}
+                                            >
+                                                ⛶
+                                            </button>
+                                            {isScreenMaximized && (
+                                                <button
+                                                    type="button"
+                                                    className="screen-icon-button screen-icon-button--close"
+                                                    aria-label="Return to normal view"
+                                                    title="Return to normal view"
+                                                    onClick={() => setIsScreenMaximized(false)}
+                                                >
+                                                    ×
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                className="screen-stop-button screen-stop-button--header"
+                                                onClick={handleStopWatching}
+                                            >
+                                                Stop watching
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {!isWatching && (
+                                <div className="screen-idle-row">
+                                    <div className="screen-idle-copy">
+                                        <span className="screen-idle-icon">▣</span>
+                                        <div>
+                                            <strong>Screen preview is off</strong>
+                                            <p>Open a live view when you need to check the employee's screen.</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="screen-primary-button"
+                                        onClick={handleWatchScreen}
+                                    >
+                                        View screen <span aria-hidden="true">↗</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {isWatching && (
+                                <div className="screen-viewer-footer">
+                                    <p className="screen-status-text">{screenStatus}</p>
+                                </div>
+                            )}
+                            {!isWatching && screenStatus !== "Not connected" && (
+                                <p className="screen-status-text screen-status-text--idle">{screenStatus}</p>
+                            )}
+                        </>
+                    )}
+                    {/* Keep video mounted at all times so WebRTC survives minimize/restore. */}
                     <video
                         ref={videoRef}
                         autoPlay
                         playsInline
                         muted
-                        style={{ display: "block", width: "100%", maxWidth: "800px", minHeight: "180px", background: "#111827", borderRadius: "8px" }}
+                        className="employee-live-video"
+                        style={{ display: isWatching && !isScreenMinimized ? "block" : "none" }}
                     />
-                    <p role="status" aria-live="polite">{screenStatus}</p>
-                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                        <button type="button" onClick={handleWatchScreen} disabled={isWatching}>
-                            View Screen
-                        </button>
-                        <button type="button" onClick={handleStopWatching} disabled={!isWatching && screenStatus === "Not connected"}>
-                            Stop Watching
-                        </button>
-                    </div>
                 </section>
 
                 <div className="section-heading">

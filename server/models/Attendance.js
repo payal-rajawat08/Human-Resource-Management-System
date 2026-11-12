@@ -43,8 +43,6 @@ const attendanceSchema = new mongoose.Schema(
             required: true,
         },
 
-        // Daily attendance calculation fields.
-        // Store durations as integer minutes.
         grossMinutes: {
             type: Number,
             default: 0,

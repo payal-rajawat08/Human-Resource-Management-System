@@ -5,6 +5,7 @@ import PayrollRun from "../models/PayrollRun.js";
 import PayrollItem from "../models/PayrollItem.js";
 import adminAuthMiddleware from "../middleware/adminAuthMiddleware.js";
 import permissionMiddleware from "../middleware/permissionMiddleware.js";
+import calculateEmployeePayroll from "../services/payrollCalculationService.js";
 
 const router = express.Router();
 
@@ -205,163 +206,244 @@ router.delete(
     }
 );
 
-// ==========================================
-// EDIT BONUS / DEDUCTION
-// PUT /api/payroll-items/:itemId
-// ==========================================
 
-router.put(
-    "/payroll-items/:itemId",
-    ...adminOnly,
-    async (req, res) => {
-        try {
-            const { itemId } = req.params;
-            const { amount, note, itemType } = req.body;
+router.put("/payroll-items/:itemId", ...adminOnly, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const { amount, note, itemType } = req.body;
 
-            if (!validObjectId(itemId)) {
-                return res.status(400).json({
-                    message: "Invalid item ID.",
-                });
-            }
-
-            const item = await PayrollItem.findById(itemId);
-
-            if (!item) {
-                return res.status(404).json({
-                    message: "Payroll item not found.",
-                });
-            }
-
-            const payroll = await PayrollRun.findOne({
-                employeeId: item.employeeId,
-                month: item.month,
-                year: item.year,
+        if (!validObjectId(itemId)) {
+            return res.status(400).json({
+                message: "Invalid item ID.",
             });
+        }
 
-            if (
-                payroll &&
-                (
-                    payroll.status !== "draft" ||
-                    payroll.employeeReview !== "pending"
-                )
-            ) {
-                return res.status(409).json({
-                    message: "Only unreviewed draft items can be edited.",
+        const item = await PayrollItem.findById(itemId);
+
+        if (!item) {
+            return res.status(404).json({
+                message: "Payroll item not found.",
+            });
+        }
+
+        const payroll = await PayrollRun.findOne({
+            employeeId: item.employeeId,
+            month: item.month,
+            year: item.year,
+        });
+
+        if (
+            payroll &&
+            (
+                payroll.status !== "draft" ||
+                !["pending", "disputed"].includes(payroll.employeeReview)
+            )
+        ) {
+            return res.status(409).json({
+                message: "Only draft payroll items can be edited.",
+            });
+        }
+
+        const oldItem = {
+            amount: item.amount,
+            note: item.note,
+            itemType: item.itemType,
+        };
+
+        if (amount !== undefined) {
+            const numericAmount = Number(amount);
+
+            if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+                return res.status(400).json({
+                    message: "Invalid amount.",
                 });
             }
 
-            if (amount !== undefined) {
-                const numericAmount = Number(amount);
+            item.amount = Number(numericAmount.toFixed(2));
+        }
 
-                if (
-                    !Number.isFinite(numericAmount) ||
-                    numericAmount <= 0
-                ) {
-                    return res.status(400).json({
-                        message: "Invalid amount.",
-                    });
-                }
-
-                item.amount = Number(numericAmount.toFixed(2));
+        if (note !== undefined) {
+            if (!String(note).trim()) {
+                return res.status(400).json({
+                    message: "Note is required.",
+                });
             }
 
-            if (note !== undefined) {
-                if (!String(note).trim()) {
-                    return res.status(400).json({
-                        message: "Note is required.",
-                    });
-                }
+            item.note = String(note).trim();
+        }
 
-                item.note = String(note).trim();
+        if (itemType !== undefined) {
+            if (!["bonus", "increment", "deduction"].includes(itemType)) {
+                return res.status(400).json({
+                    message: "Invalid item type.",
+                });
             }
 
-            if (itemType !== undefined) {
-                if (!["bonus", "deduction"].includes(itemType)) {
-                    return res.status(400).json({
-                        message: "Invalid item type.",
-                    });
-                }
+            item.itemType = itemType;
+        }
 
-                item.itemType = itemType;
-            }
+        item.approvedBy = req.adminId;
 
-            item.approvedBy = req.adminId;
-
+        try {
             await item.save();
 
-            return res.status(200).json({
-                message: "Payroll item updated successfully.",
-                payrollItem: item,
-            });
+            if (payroll) {
+                const calculation = await calculateEmployeePayroll({
+                    employeeId: item.employeeId,
+                    month: item.month,
+                    year: item.year,
+                    asOfDate: payroll.periodEnd,
+                });
 
+                const items = await PayrollItem.find({
+                    employeeId: item.employeeId,
+                    month: item.month,
+                    year: item.year,
+                });
+
+                const bonus = items
+                    .filter(i => i.itemType === "bonus")
+                    .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+
+                const increment = items
+                    .filter(i => i.itemType === "increment")
+                    .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+
+                const deductions = items
+                    .filter(i => i.itemType === "deduction")
+                    .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+
+                payroll.bonusAmount = bonus;
+                payroll.additionalDeductions = deductions;
+                payroll.netSalary = Number(
+                    Math.max(
+                        0,
+                        calculation.netSalary + bonus + increment - deductions
+                    ).toFixed(2)
+                );
+
+                await payroll.save();
+            }
         } catch (error) {
-            console.error("Update payroll item error:", error);
+            Object.assign(item, oldItem);
+            await item.save();
+            throw error;
+        }
 
-            return res.status(500).json({
-                message: "Failed to update payroll item.",
+        return res.status(200).json({
+            message: "Payroll item updated and salary recalculated successfully.",
+            payrollItem: item,
+            payroll,
+        });
+
+    } catch (error) {
+        console.error("Update payroll item error:", error);
+
+        return res.status(500).json({
+            message: "Failed to update payroll item.",
+            error: error.message,
+        });
+    }
+});
+
+
+router.delete("/payroll-items/:itemId", ...adminOnly, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+
+        if (!validObjectId(itemId)) {
+            return res.status(400).json({
+                message: "Invalid item ID.",
             });
         }
-    }
-);
 
-// ==========================================
-// DELETE BONUS / DEDUCTION
-// DELETE /api/payroll-items/:itemId
-// ==========================================
+        const item = await PayrollItem.findById(itemId);
 
-router.delete(
-    "/payroll-items/:itemId",
-    ...adminOnly,
-    async (req, res) => {
-        try {
-            const { itemId } = req.params;
+        if (!item) {
+            return res.status(404).json({
+                message: "Payroll item not found.",
+            });
+        }
 
-            if (!validObjectId(itemId)) {
-                return res.status(400).json({
-                    message: "Invalid item ID.",
-                });
-            }
+        const payroll = await PayrollRun.findOne({
+            employeeId: item.employeeId,
+            month: item.month,
+            year: item.year,
+        });
 
-            const item = await PayrollItem.findById(itemId);
+        if (
+            payroll &&
+            (
+                payroll.status !== "draft" ||
+                !["pending", "disputed"].includes(payroll.employeeReview)
+            )
+        ) {
+            return res.status(409).json({
+                message: "Only draft payroll items can be deleted.",
+            });
+        }
 
-            if (!item) {
-                return res.status(404).json({
-                    message: "Payroll item not found.",
-                });
-            }
+        // Calculate base salary before deleting the item
+        let calculation = null;
 
-            const payroll = await PayrollRun.findOne({
+        if (payroll) {
+            calculation = await calculateEmployeePayroll({
+                employeeId: item.employeeId,
+                month: item.month,
+                year: item.year,
+                asOfDate: payroll.periodEnd,
+            });
+        }
+
+        // Delete payroll item
+        await item.deleteOne();
+
+        if (payroll) {
+            // Fetch remaining payroll items
+            const remainingItems = await PayrollItem.find({
                 employeeId: item.employeeId,
                 month: item.month,
                 year: item.year,
             });
 
-            if (
-                payroll &&
-                (
-                    payroll.status !== "draft" ||
-                    payroll.employeeReview !== "pending"
-                )
-            ) {
-                return res.status(409).json({
-                    message: "Only unreviewed draft items can be deleted.",
-                });
-            }
+            const bonus = remainingItems
+                .filter(item => item.itemType === "bonus")
+                .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
-            await item.deleteOne();
+            const increment = remainingItems
+                .filter(item => item.itemType === "increment")
+                .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
-            return res.status(200).json({
-                message: "Payroll item deleted successfully.",
-            });
+            const deductions = remainingItems
+                .filter(item => item.itemType === "deduction")
+                .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
-        } catch (error) {
-            console.error("Delete payroll item error:", error);
+            payroll.bonusAmount = bonus;
+            payroll.additionalDeductions = deductions;
 
-            return res.status(500).json({
-                message: "Failed to delete payroll item.",
-            });
+            payroll.netSalary = Number(
+                Math.max(
+                    0,
+                    calculation.netSalary + bonus + increment - deductions
+                ).toFixed(2)
+            );
+
+            await payroll.save();
         }
+
+        return res.status(200).json({
+            message: "Payroll item deleted and salary recalculated successfully.",
+            payroll,
+        });
+
+    } catch (error) {
+        console.error("Delete payroll item error:", error);
+
+        return res.status(500).json({
+            message: "Failed to delete payroll item.",
+            error: error.message,
+        });
     }
-);
+});
 
 export default router;

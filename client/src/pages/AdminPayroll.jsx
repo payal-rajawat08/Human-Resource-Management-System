@@ -34,6 +34,7 @@ function AdminPayroll() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+    const [pendingNotification, setPendingNotification] = useState(null);
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(10);
@@ -176,7 +177,30 @@ function AdminPayroll() {
         setPayrollDetails(null);
 
         try {
-            await fetchPayrollDetails(employee._id);
+            const details = await fetchPayrollDetails(employee._id);
+
+            // Current month opens as a live-to-date preview automatically.
+            // It remains unsaved until the normal payroll finalization workflow.
+            if (
+                !details?.payrollRun ||
+                (details.payrollRun.status === "draft" &&
+                    details.payrollRun.employeeReview === "pending")
+            ) {
+                const previewResponse = await axios.post(
+                    `${API_BASE_URL}/api/payroll/calculate`,
+                    { employeeId: employee._id, month, year },
+                    { headers }
+                );
+
+                if (previewResponse.data?.isPreview) {
+                    setPayrollDetails({
+                        ...details,
+                        payrollRun: previewResponse.data.payroll,
+                        payrollItems: previewResponse.data.payrollItems || [],
+                        isPreview: true,
+                    });
+                }
+            }
         } catch (err) {
             setDetailError(
                 err.response?.data?.message ||
@@ -186,6 +210,22 @@ function AdminPayroll() {
             setDetailLoading(false);
         }
     };
+    useEffect(() => {
+        if (!pendingNotification) return;
+
+        const targetMonth = `${pendingNotification.year}-${String(
+            pendingNotification.month
+        ).padStart(2, "0")}`;
+
+        if (selectedMonth !== targetMonth) return;
+
+        const employee = pendingNotification.employeeId;
+
+        if (employee && typeof employee === "object" && employee._id) {
+            handleViewPayroll(employee);
+            setPendingNotification(null);
+        }
+    }, [pendingNotification, selectedMonth, handleViewPayroll]);
 
     const refreshDetails = async () => {
         if (!selectedEmployee) return;
@@ -193,17 +233,36 @@ function AdminPayroll() {
         await fetchEmployees();
     };
 
+    const refreshCurrentPreview = async () => {
+        if (!selectedEmployee) return;
+        const response = await axios.post(
+            `${API_BASE_URL}/api/payroll/calculate`,
+            { employeeId: selectedEmployee._id, month, year },
+            { headers }
+        );
+        if (response.data?.isPreview) {
+            setPayrollDetails((previous) => ({
+                ...previous,
+                payrollRun: response.data.payroll,
+                payrollItems: response.data.payrollItems || [],
+                isPreview: true,
+            }));
+        }
+        await fetchEmployees();
+    };
+
     const handleCalculatePayroll = async () => {
         if (!selectedEmployee || isFutureMonth) return;
 
         const existingRun = payrollDetails?.payrollRun;
+
         if (
             existingRun &&
-            (existingRun.status === "finalized" ||
-                existingRun.employeeReview !== "pending")
+            !payrollDetails?.isPreview &&
+            existingRun.status === "finalized"
         ) {
             setDetailError(
-                "This payroll has already been reviewed or finalized. Recalculation is not allowed."
+                "Finalized payroll cannot be recalculated."
             );
             return;
         }
@@ -219,6 +278,7 @@ function AdminPayroll() {
                     employeeId: selectedEmployee._id,
                     month,
                     year,
+                    saveDraft: true,
                 },
                 { headers }
             );
@@ -233,14 +293,51 @@ function AdminPayroll() {
                 await refreshDetails();
             }
 
-setSuccessMessage(
-    response.data.isPreview
-        ? "Payroll preview calculated. It has not been saved and cannot be paid."
-        : "Payroll calculated successfully."
-);
+            setSuccessMessage(
+                response.data.isPreview
+                ? "Payroll preview calculated. It has not been saved and cannot be paid."
+                : "Payroll calculated successfully."
+            );
         } catch (err) {
             setDetailError(
                 err.response?.data?.message || "Payroll calculation failed."
+            );
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleSendPayroll = async () => {
+        const payrollId = payrollDetails?.payrollRun?._id;
+
+        if (!payrollId || payrollDetails?.isPreview) {
+            setDetailError("Please save the payroll draft before sending it.");
+            return;
+        }
+
+        const run = payrollDetails.payrollRun;
+
+        if (run.status !== "draft" || run.employeeReview !== "pending") {
+            setDetailError("Only pending draft payroll can be sent for review.");
+            return;
+        }
+
+        try {
+            setActionLoading(true);
+            setDetailError("");
+            setSuccessMessage("");
+
+            const response = await axios.post(
+                `${API_BASE_URL}/api/payroll/${payrollId}/send-to-employee`,
+                {},
+                { headers }
+            );
+
+            await refreshDetails();
+            setSuccessMessage(response.data.message);
+        } catch (err) {
+            setDetailError(
+                err.response?.data?.message || "Failed to send payroll to employee."
             );
         } finally {
             setActionLoading(false);
@@ -253,7 +350,14 @@ setSuccessMessage(
         if (!selectedEmployee || !payrollDetails) return;
 
         const run = payrollDetails.payrollRun;
-        if (run && (run.status !== "draft" || run.employeeReview !== "pending")) {
+        if (
+            run &&
+            !payrollDetails?.isPreview &&
+            (
+                run.status !== "draft" ||
+                !["pending","disputed"].includes(run.employeeReview)
+            )          
+        ){
             setDetailError("Bonus or deduction cannot be changed after review.");
             return;
         }
@@ -295,10 +399,17 @@ setSuccessMessage(
 
             setItemForm({ itemType: "bonus", amount: "", note: "" });
             setEditingItemId(null);
-            await refreshDetails();
+
+            if (payrollDetails?.isPreview || !payrollDetails?.payrollRun) {
+                await refreshCurrentPreview();
+            } else {
+                await refreshDetails();
+            }
 
             setSuccessMessage(
-                "Payroll item saved and draft payroll net salary updated."
+                isCurrentMonth
+                    ? "Payroll item saved. Till-date preview and net payable have been recalculated."
+                    : "Payroll item saved and draft payroll net salary updated."
             );
         } catch (err) {
             setDetailError(
@@ -309,34 +420,41 @@ setSuccessMessage(
         }
     };
 
-    const handleSaveSalaryCorrection = async (event) => {
+    const handleSaveSalaryAddition = async (event) => {
         event.preventDefault();
 
-        if (!selectedEmployee || !payrollDetails?.payrollRun) {
-            setDetailError("Calculate payroll before adding a salary correction.");
+        if (!selectedEmployee || !payrollDetails) {
+            setDetailError("Payroll details are not available yet.");
             return;
         }
 
         const run = payrollDetails.payrollRun;
         const amount = Number(salaryCorrectionForm.amount);
 
-        if (run.status !== "draft" || run.employeeReview !== "pending") {
-            setDetailError("Salary correction is allowed only on an unreviewed draft payroll.");
+        if (
+            run &&
+            !payrollDetails.isPreview &&
+            (
+                run.status !== "draft" ||
+                !["pending","disputed"].includes(run.employeeReview)
+            )
+        ){
+            setDetailError("Other earnings can only be added to an unreviewed draft or current preview.");
             return;
         }
 
-        if (isFutureMonth || isCurrentMonth) {
-            setDetailError("Salary correction is available only for completed payroll months.");
+        if (isFutureMonth) {
+            setDetailError("Future month payroll is not available.");
             return;
         }
 
         if (!Number.isFinite(amount) || amount <= 0) {
-            setDetailError("Enter a valid correction amount greater than zero.");
+            setDetailError("Enter a valid salary addition greater than zero.");
             return;
         }
 
         if (!salaryCorrectionForm.reason.trim()) {
-            setDetailError("Salary correction reason is required.");
+            setDetailError("Salary addition reason is required.");
             return;
         }
 
@@ -346,23 +464,25 @@ setSuccessMessage(
             setSuccessMessage("");
 
             await axios.post(
-                `${API_BASE_URL}/api/payroll-salary-corrections`,
+                `${API_BASE_URL}/api/payroll-items`,
                 {
                     employeeId: selectedEmployee._id,
                     month,
                     year,
+                    itemType: "increment",
                     amount,
-                    reason: salaryCorrectionForm.reason.trim(),
+                    note: salaryCorrectionForm.reason.trim(),
                 },
                 { headers }
             );
 
             setSalaryCorrectionForm({ amount: "", reason: "" });
-            await refreshDetails();
-            setSuccessMessage("One-time salary correction applied to this month's payroll.");
+            if (isCurrentMonth) await refreshCurrentPreview();
+            else await refreshDetails();
+            setSuccessMessage("Other earnings added and net payable recalculated.");
         } catch (err) {
             setDetailError(
-                err.response?.data?.message || "Unable to apply salary correction."
+                err.response?.data?.message || "Unable to apply salary addition."
             );
         } finally {
             setActionLoading(false);
@@ -624,18 +744,33 @@ setSuccessMessage(
     const run = payrollDetails?.payrollRun;
     const items = payrollDetails?.payrollItems || [];
     const payments = run?.payments || [];
+
     const bonusTotal = items
         .filter((item) => item.itemType === "bonus")
         .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    const incrementTotal = items
+        .filter((item) => item.itemType === "increment")
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
     const deductionTotal = items
         .filter((item) => item.itemType === "deduction")
         .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
     const totalPaid = Number(run?.totalPaidAmount || 0);
     const netSalary = Number(run?.netSalary || 0);
     const balance = Math.max(0, netSalary - totalPaid);
+
     const canEditItems =
         !isFutureMonth &&
-        (!run || (run.status === "draft" && run.employeeReview === "pending"));
+        (
+            Boolean(payrollDetails?.isPreview) ||
+            !run ||
+            (
+                run.status === "draft" &&
+                ["pending", "disputed"].includes(run.employeeReview)
+            )
+        );
     const canRecordPayment =
         !isCurrentMonth && run?.status === "finalized" && balance > 0;
 
@@ -930,8 +1065,8 @@ setSuccessMessage(
                             <div className="payroll-modal-title-wrap">
                                 <span className="payroll-modal-title-icon" aria-hidden="true">▤</span>
                                 <div>
-                                    <h2 id="payrollModalTitle">Payroll Details</h2>
-                                    <p>View and adjust employee payroll</p>
+                                    <h2 id="payrollModalTitle">Payslip & Payroll</h2>
+                                    <p>Monthly salary statement and payroll management</p>
                                 </div>
                             </div>
                             <button
@@ -1002,66 +1137,86 @@ setSuccessMessage(
                                                 >✎</button>
                                             </>
                                         )}
+                                        <span>{selectedEmployee.name} · {selectedEmployee.email}</span>
                                     </div>
                                     <div className="payroll-company-period">
                                         <span>Payslip period</span>
                                         <strong>{selectedMonthLabel}</strong>
                                     </div>
                                 </div>
-                                <div className="payroll-section-title">
-                                    <h3>Salary Summary</h3>
-                                    <div className="payroll-modal-header-actions">
-                                        <button type="button" className="payroll-btn payroll-btn-light payroll-send-placeholder" disabled title="This option will be enabled in a future update">
-                                            Send to Employee
-                                        </button>
-                                        <button
-                                        type="button"
-                                        className="payroll-btn payroll-btn-primary"
-                                        disabled={actionLoading || isFutureMonth}
-                                        onClick={handleCalculatePayroll}
-                                    >
-                                        {actionLoading ? "Please wait..." : "Calculate / Preview"}
-                                        </button>
-                                    </div>
-                                </div>
+                                <section className="payroll-slip-sheet">
+                                    <div className="payroll-slip-heading">
+                                        <div>
+                                            <span className="payroll-slip-kicker">MONTHLY PAY STATEMENT</span>
+                                            <h3>Salary Statement</h3>
+                                            <p>Pay period: {selectedMonthLabel}</p>
+                                        </div>
+                                        <div className="payroll-modal-header-actions">
+                                            <button
+                                                type="button"
+                                                className="payroll-btn payroll-btn-light"
+                                                disabled={!run}
+                                                onClick={() => window.print()}
+                                            >
+                                                Print Payslip
+                                            </button>
 
-                                <div className="payroll-detail-grid">
-                                    <div>
-                                        <span>Gross Monthly Salary</span>
-                                        <strong>
-                                            {payrollDetails.salaryStructure
-                                                ? money(payrollDetails.salaryStructure.grossMonthly)
-                                                : "Not Assigned"}
-                                        </strong>
+                                            <button
+                                                type="button"
+                                                className="payroll-btn payroll-btn-light"
+                                                disabled={
+                                                    actionLoading ||
+                                                    payrollDetails.isPreview ||
+                                                    run?.status !== "draft"  ||
+                                                    run?.employeeReview !== "pending"
+                                                }
+                                                onClick={handleSendPayroll}
+                                            >
+                                                {actionLoading ? "Please wait..." : "Send to Employee"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="payroll-btn payroll-btn-primary"
+                                                disabled={actionLoading || isFutureMonth}
+                                                onClick={handleCalculatePayroll}
+                                            >
+                                                {actionLoading ? "Please wait..." : "Refresh Calculation"}
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <span>Salary Mode</span>
-                                        <strong>
-                                            {formatStatus(payrollDetails.salaryStructure?.salaryMode || "—")}
-                                        </strong>
-                                    </div>
-                                    <div>
-                                        <span>Payroll Status</span>
-                                        <strong>{formatStatus(run?.status || "Not Generated")}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Employee Review</span>
-                                        <strong>{formatStatus(run?.employeeReview || "Not Available")}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Net Salary</span>
-                                        <strong>{run ? money(run.netSalary) : "Not Calculated"}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Payment Status</span>
-                                        <strong>
-                                            {isCurrentMonth ? "Preview only" : formatStatus(run?.paymentStatus || "Pending")}
-                                        </strong>
-                                    </div>
-                                </div>
 
-                                <h3>Attendance & Leave</h3>
-                                <div className="payroll-detail-grid">
+                                    <div className="payroll-slip-employee-grid">
+                                        <div><span>Employee Name</span><strong>{selectedEmployee.name || "—"}</strong></div>
+                                        <div><span>Email</span><strong>{selectedEmployee.email || "—"}</strong></div>
+                                        <div><span>Salary Mode</span><strong>{formatStatus(payrollDetails.salaryStructure?.salaryMode || "—")}</strong></div>
+                                        <div><span>Payroll Status</span><strong>{payrollDetails.isPreview ? "Live Preview · Till Date" : formatStatus(run?.status || "Not Generated")}</strong></div>
+                                        <div><span>Employee Review</span><strong>{formatStatus(run?.employeeReview || "Not Available")}</strong></div>
+                                        <div><span>Payment Status</span><strong>{isCurrentMonth ? "Preview only" : formatStatus(run?.paymentStatus || "Pending")}</strong></div>
+                                    </div>
+
+                                    <div className="payroll-slip-ledger">
+                                        <section className="payroll-ledger-panel">
+                                            <h4>Earnings</h4>
+                                            <div className="payroll-ledger-row"><span>Gross Monthly Salary</span><strong>{payrollDetails.salaryStructure ? money(payrollDetails.salaryStructure.grossMonthly) : "Not Assigned"}</strong></div>
+                                            <div className="payroll-ledger-row"><span>Bonus</span><strong>{money(bonusTotal)}</strong></div>
+                                            <div className="payroll-ledger-row"><span>Other Earnings</span><strong>{money(incrementTotal + Number(run?.salaryCorrectionAmount || 0))}</strong></div>
+                                        </section>
+                                        <section className="payroll-ledger-panel is-deduction">
+                                            <h4>Deductions</h4>
+                                            <div className="payroll-ledger-row"><span>Unpaid Leave Deduction</span><strong>{run ? money(run.unpaidLeaveDeduction) : "—"}</strong></div>
+                                            <div className="payroll-ledger-row"><span>Attendance Shortfall</span><strong>{money(run?.shortfallAmount)}</strong></div>
+                                            <div className="payroll-ledger-row"><span>Additional Deductions</span><strong>{money(deductionTotal)}</strong></div>
+                                        </section>
+                                    </div>
+
+                                    <div className="payroll-net-pay-row">
+                                        <div><span>NET PAYABLE</span><small>{payrollDetails.isPreview ? `Estimated payable through ${formatDate(new Date())}` : `Final amount for ${selectedMonthLabel}`}</small></div>
+                                        <strong>{run ? money(netSalary) : "Not Calculated"}</strong>
+                                    </div>
+
+                                <div className="payroll-attendance-summary">
+                                    <h3>Attendance Summary</h3>
+                                    <div className="payroll-attendance-metrics">
                                     <div>
                                         <span>Expected Working Days</span>
                                         <strong>{payrollDetails.workingHours?.expectedWorkingDays ?? "—"}</strong>
@@ -1090,50 +1245,97 @@ setSuccessMessage(
                                         <span>Unpaid Leave Deduction</span>
                                         <strong>{run ? money(run.unpaidLeaveDeduction) : "—"}</strong>
                                     </div>
-                                </div>
-
-                                <h3>Bonus & Deductions</h3>
-                                <div className="payroll-detail-grid">
-                                    <div>
-                                        <span>Total Bonuses</span>
-                                        <strong>{money(bonusTotal)}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Additional Deductions</span>
-                                        <strong>{money(deductionTotal)}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Shortfall Deduction</span>
-                                        <strong>{money(run?.shortfallAmount)}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Approved Waiver / Reduction</span>
-                                        <strong>{money(run?.adjustmentAmount)}</strong>
                                     </div>
                                 </div>
 
-                                {canEditItems && run && !isCurrentMonth && (
-                                    <form className="payroll-form" onSubmit={handleSaveSalaryCorrection}>
-                                        <h4>One-time Salary Correction</h4>
+                                <div className="payroll-leave-heading payroll-monthly-leave-heading">
+                                    <div>
+                                        <span className="payroll-section-kicker">MONTHLY ATTENDANCE RECORD</span>
+                                        <h3>Leave Details</h3>
+                                    </div>
+                                    <span className="payroll-leave-period">{selectedMonthLabel}</span>
+                                </div>
+
+                                <div className="payroll-monthly-leave-grid">
+                                    <section className="payroll-monthly-leave-card is-paid">
+                                        <div className="payroll-monthly-leave-top">
+                                            <div>
+                                                <span>Paid Leave</span>
+                                                <strong>{payrollDetails.leaveSummary?.paidTaken ?? 0} <small>days</small></strong>
+                                            </div>
+                                            <span className="payroll-monthly-leave-icon">✓</span>
+                                        </div>
+                                        <div className="payroll-monthly-leave-dates">
+                                            <span className="payroll-monthly-leave-label">Dates</span>
+                                            {(payrollDetails.leaveSummary?.paidDates || []).length ? (
+                                                <div className="payroll-leave-date-pills">
+                                                    {payrollDetails.leaveSummary.paidDates.map((date, index) => (
+                                                        <span key={`paid-${index}`}>{formatDate(date)}</span>
+                                                    ))}
+                                                </div>
+                                            ) : <p>No paid leave taken this month.</p>}
+                                        </div>
+                                    </section>
+
+                                    <section className="payroll-monthly-leave-card is-unpaid">
+                                        <div className="payroll-monthly-leave-top">
+                                            <div>
+                                                <span>Unpaid Leave</span>
+                                                <strong>{payrollDetails.leaveSummary?.unpaidTaken ?? 0} <small>days</small></strong>
+                                            </div>
+                                            <span className="payroll-monthly-leave-icon">−</span>
+                                        </div>
+                                        <div className="payroll-monthly-leave-dates">
+                                            <span className="payroll-monthly-leave-label">Dates</span>
+                                            {(payrollDetails.leaveSummary?.unpaidDates || []).length ? (
+                                                <div className="payroll-leave-date-pills">
+                                                    {payrollDetails.leaveSummary.unpaidDates.map((date, index) => (
+                                                        <span key={`unpaid-${index}`}>{formatDate(date)}</span>
+                                                    ))}
+                                                </div>
+                                            ) : <p>No unpaid leave taken this month.</p>}
+                                        </div>
+                                    </section>
+                                </div>
+                                </section>
+
+                                <div className="payroll-admin-adjustments-heading">
+                                    <span className="payroll-slip-kicker">AUTHORIZED ADMIN ACTIONS</span>
+                                    <h3>Payroll Adjustments</h3>
+                                    <p>Only authorized admins can add one-time earnings, bonuses and deductions. Every entry requires a reason and is recorded in the payroll audit trail.</p>
+                                </div>
+                                {isCurrentMonth && payrollDetails.isPreview && (
+                                    <div className="payroll-preview-admin-note">
+                                        <strong>Live preview · Month to date</strong>
+                                        <span>Bonus, Other Earnings and additional deductions can be added now and will recalculate the preview. Reduction or waiver of system-calculated attendance / leave deductions is available on completed, saved draft payrolls.</span>
+                                    </div>
+                                )}
+
+                                <details className="payroll-admin-tools" open={Boolean(editingItemId)}>
+                                    <summary className="payroll-admin-tools-summary">
+                                        <span className="payroll-admin-tools-copy">
+                                            <strong>Manage payroll entries</strong>
+                                            <small>Add or edit bonus, other earnings and deductions only when required.</small>
+                                        </span>
+                                        <span className="payroll-admin-tools-toggle">Open controls <span aria-hidden="true">＋</span></span>
+                                    </summary>
+                                    <div className="payroll-admin-tools-content">
+                                {canEditItems && (
+                                    <form className="payroll-form payroll-salary-addition-form" onSubmit={handleSaveSalaryAddition}>
+                                        <h4>Add Other Earnings</h4>
                                         <p className="payroll-muted">
-                                            Add an amount to this month's calculated salary if a technical issue or valid correction is identified.
-                                            This does not change the employee's permanent salary structure.
+                                            Add a one-time earning separately from Bonus. A reason is mandatory and this entry does not change the employee's fixed salary structure.
                                         </p>
                                         <div className="payroll-form-grid">
                                             <label>
-                                                Correction amount (₹)
+                                                Other Earnings Amount (₹)
                                                 <input
                                                     type="number"
                                                     min="0.01"
                                                     step="0.01"
                                                     required
                                                     value={salaryCorrectionForm.amount}
-                                                    onChange={(event) =>
-                                                        setSalaryCorrectionForm({
-                                                            ...salaryCorrectionForm,
-                                                            amount: event.target.value,
-                                                        })
-                                                    }
+                                                    onChange={(event) => setSalaryCorrectionForm({ ...salaryCorrectionForm, amount: event.target.value })}
                                                 />
                                             </label>
                                             <label className="payroll-form-full">
@@ -1142,22 +1344,13 @@ setSuccessMessage(
                                                     required
                                                     maxLength={500}
                                                     value={salaryCorrectionForm.reason}
-                                                    onChange={(event) =>
-                                                        setSalaryCorrectionForm({
-                                                            ...salaryCorrectionForm,
-                                                            reason: event.target.value,
-                                                        })
-                                                    }
-                                                    placeholder="Explain why this one-time salary correction is required"
+                                                    onChange={(event) => setSalaryCorrectionForm({ ...salaryCorrectionForm, reason: event.target.value })}
+                                                    placeholder="Enter approved reason for this earning"
                                                 />
                                             </label>
                                         </div>
-                                        <button
-                                            type="submit"
-                                            className="payroll-btn payroll-btn-primary"
-                                            disabled={actionLoading}
-                                        >
-                                            {actionLoading ? "Please wait..." : "Apply Salary Correction"}
+                                        <button type="submit" className="payroll-btn payroll-btn-primary" disabled={actionLoading}>
+                                            {actionLoading ? "Please wait..." : "Add Other Earnings"}
                                         </button>
                                     </form>
                                 )}
@@ -1290,6 +1483,7 @@ setSuccessMessage(
                                                 >
                                                     <option value="bonus">Bonus</option>
                                                     <option value="deduction">Deduction</option>
+                                                    <option value="increment">Other Earnings</option>
                                                 </select>
                                             </label>
 
@@ -1356,6 +1550,9 @@ setSuccessMessage(
                                     </form>
                                 )}
 
+                                    </div>
+                                </details>
+
                                 {items.length > 0 ? (
                                     <div className="payroll-table-wrapper">
                                         <table className="payroll-table">
@@ -1370,7 +1567,7 @@ setSuccessMessage(
                                             <tbody>
                                                 {items.map((item) => (
                                                     <tr key={item._id}>
-                                                        <td>{formatStatus(item.itemType)}</td>
+                                                        <td>{item.itemType === "increment" ? "Other Earnings" : formatStatus(item.itemType)}</td>
                                                         <td>{money(item.amount)}</td>
                                                         <td>{item.note}</td>
                                                         <td>
@@ -1398,7 +1595,7 @@ setSuccessMessage(
                                         </table>
                                     </div>
                                 ) : (
-                                    <p className="payroll-muted">No bonus or deduction entries for this month.</p>
+                                    <p className="payroll-muted">No bonus, other earnings or deduction entries for this month.</p>
                                 )}
 
                                 {run?.employeeReview === "disputed" && (
@@ -1439,8 +1636,7 @@ setSuccessMessage(
                                             className="payroll-btn payroll-btn-primary"
                                             disabled={
                                                 actionLoading ||
-                                                run.employeeReview !== "accepted" ||
-                                                isCurrentMonth
+                                                run.employeeReview !== "accepted"
                                             }
                                             onClick={handleFinalizePayroll}
                                         >
@@ -1606,107 +1802,7 @@ setSuccessMessage(
                                     </>
                                 )}
 
-                                <div className="payroll-leave-heading">
-                                    <div>
-                                        <span className="payroll-section-kicker">TIME OFF OVERVIEW</span>
-                                        <h3>Leave Summary</h3>
-                                    </div>
-                                    <span className="payroll-leave-period">{selectedMonthLabel}</span>
-                                </div>
 
-                                <div className="payroll-leave-summary">
-                                    <div className="payroll-leave-stat leave-stat-total">
-                                        <span className="payroll-leave-stat-icon">▦</span>
-                                        <span className="payroll-leave-stat-label">Approved Leave Days</span>
-                                        <strong>{payrollDetails.leaveSummary?.totalTaken ?? 0}</strong>
-                                        <small>Working days only</small>
-                                    </div>
-                                    <div className="payroll-leave-stat leave-stat-paid">
-                                        <span className="payroll-leave-stat-icon">✓</span>
-                                        <span className="payroll-leave-stat-label">Paid Leave Days</span>
-                                        <strong>{payrollDetails.leaveSummary?.paidTaken ?? 0}</strong>
-                                        <small>Salary protected</small>
-                                    </div>
-                                    <div className="payroll-leave-stat leave-stat-unpaid">
-                                        <span className="payroll-leave-stat-icon">−</span>
-                                        <span className="payroll-leave-stat-label">Unpaid Leave Days</span>
-                                        <strong>{payrollDetails.leaveSummary?.unpaidTaken ?? 0}</strong>
-                                        <small>Subject to deduction</small>
-                                    </div>
-                                </div>
-
-                                <div className="payroll-leave-allocation">
-                                    <div className="payroll-section-subheading">
-                                        <h4>Annual Leave Allocation</h4>
-                                        <span>Configured leave balance</span>
-                                    </div>
-                                    {payrollDetails.leavePolicy ? (
-                                        <div className="payroll-detail-grid">
-                                            <div><span>Casual Leave</span><strong>{payrollDetails.leavePolicy.casualLeave ?? 0} days</strong></div>
-                                            <div><span>Sick Leave</span><strong>{payrollDetails.leavePolicy.sickLeave ?? 0} days</strong></div>
-                                            <div><span>Earned Leave</span><strong>{payrollDetails.leavePolicy.earnedLeave ?? 0} days</strong></div>
-                                            <div><span>Other Leave</span><strong>{payrollDetails.leavePolicy.otherLeave ?? 0} days</strong></div>
-                                        </div>
-                                    ) : (
-                                        <p className="payroll-muted">No leave policy assigned.</p>
-                                    )}
-                                </div>
-
-                                <div className="payroll-section-subheading payroll-leave-history-heading">
-                                    <div>
-                                        <span className="payroll-section-kicker">REQUEST REGISTER</span>
-                                        <h3>Leave History</h3>
-                                    </div>
-                                    <span>{(payrollDetails.leaveRequests || []).length} request(s)</span>
-                                </div>
-                                {(payrollDetails.leaveRequests || []).length > 0 ? (
-                                    <div className="payroll-table-wrapper payroll-leave-table-wrapper">
-                                        <table className="payroll-table payroll-leave-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Leave Type</th>
-                                                    <th>Leave Dates</th>
-                                                    <th>Payment Type</th>
-                                                    <th>Status</th>
-                                                    <th>Reason</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {payrollDetails.leaveRequests.map((leave) => (
-                                                    <tr key={leave._id}>
-                                                        <td><strong>{formatStatus(leave.leaveType)}</strong></td>
-                                                        <td>
-                                                            <span className="payroll-leave-date-range">
-                                                                {formatDate(leave.startDate)}
-                                                                <span>to</span>
-                                                                {formatDate(leave.endDate)}
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <span className={`payroll-leave-payment ${leave.leavePaymentType === "paid" ? "is-paid" : leave.leavePaymentType === "unpaid" ? "is-unpaid" : "is-unassigned"}`}>
-                                                                {formatStatus(leave.leavePaymentType || "Not Set")}
-                                                            </span>
-                                                        </td>
-                                                        <td>
-                                                            <span className={`payroll-leave-status status-${String(leave.status || "pending").toLowerCase()}`}>
-                                                                {formatStatus(leave.status)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="payroll-leave-reason" title={leave.reason || "—"}>
-                                                            {leave.reason || "—"}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <div className="payroll-leave-empty">
-                                        <span>▤</span>
-                                        <strong>No leave requests for this period</strong>
-                                        <p>Approved, pending and rejected requests will appear here.</p>
-                                    </div>
-                                )}
                             </>
                         )}
                     </section>

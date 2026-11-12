@@ -16,6 +16,7 @@ function Leaves() {
     const [updatingId, setUpdatingId] = useState(null);
     const [rejectingLeave, setRejectingLeave] = useState(null);
     const [rejectionReason, setRejectionReason] = useState("");
+    const [leavePaymentTypes, setLeavePaymentTypes] = useState({});
     const [backendTotalLeaves, setBackendTotalLeaves] = useState(0);
     const [backendCounts, setBackendCounts] = useState({
         All: 0,
@@ -72,7 +73,7 @@ function Leaves() {
         };
     }, [currentPage, pageSize, filter, searchTerm]);
 
-    const updateLeave = async (id, status, reason = "") => {
+    const updateLeave = async (id, status, reason = "", paymentType = "") => {
         try {
             setUpdatingId(id);
             const token = sessionStorage.getItem("adminToken");
@@ -84,6 +85,9 @@ function Leaves() {
                     ...(status === "Rejected"
                         ? { rejectionReason: reason.trim() }
                         : {}),
+                        ...(status === "Approved"
+                            ? { leavePaymentType: paymentType }
+                            : {}),
                 },
                 {
                     headers: {
@@ -326,6 +330,18 @@ function Leaves() {
                                         <span>LEAVE TYPE</span>
                                         <strong>{leave.leaveType || "Other"}</strong>
                                     </div>
+                                    {leave.status === "Approved" && (
+                                        <div className="leave-detail">
+                                            <span>PAYMENT TYPE</span>
+                                            <strong>
+                                                {leave.leavePaymentType === "paid"
+                                                    ? "Paid Leave"
+                                                    : leave.leavePaymentType === "unpaid"
+                                                        ? "Unpaid Leave"
+                                                        : "Not Classified"}
+                                            </strong>
+                                        </div>
+                                    )}
                                     <div className="leave-detail">
                                         <span>FROM</span>
                                         <strong>{formatDate(leave.startDate)}</strong>
@@ -349,24 +365,49 @@ function Leaves() {
                                 )}
 
                                 {leave.status === "Pending" && (
-                                    <div className="leave-actions">
-                                        <button
-                                            type="button"
-                                            className="reject-btn"
-                                            disabled={updatingId === leave._id}
-                                            onClick={() => openRejectModal(leave)}
-                                        >
-                                            Reject
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="approve-btn"
-                                            disabled={updatingId === leave._id}
-                                            onClick={() => updateLeave(leave._id, "Approved")}
-                                        >
-                                            {updatingId === leave._id ? "Updating..." : "Approve Leave"}
-                                        </button>
-                                    </div>
+                                   <div className="leave-actions">
+                                    <button
+                                        type="button"
+                                        className="reject-btn"
+                                        disabled={updatingId === leave._id}
+                                        onClick={() => openRejectModal(leave)}
+                                    >
+                                        Reject
+                                    </button>
+
+                                    <select
+                                        value={leavePaymentTypes[leave._id] || ""}
+                                        onChange={(event) =>
+                                            setLeavePaymentTypes((previous) => ({
+                                                ...previous,
+                                                [leave._id]: event.target.value,
+                                            }))
+                                        }
+                                        disabled={updatingId === leave._id}
+                                    >
+                                        <option value="">Select Leave Payment</option>
+                                        <option value="paid">Paid Leave</option>
+                                        <option value="unpaid">Unpaid Leave</option>
+                                    </select>
+                                <button
+                                    type="button"
+                                    className="approve-btn"
+                                    disabled={
+                                        updatingId === leave._id ||
+                                        !leavePaymentTypes[leave._id]
+                                    }
+                                    onClick={() =>
+                                        updateLeave(
+                                            leave._id,
+                                            "Approved",
+                                            "",
+                                            leavePaymentTypes[leave._id]
+                                        )
+                                    }
+                                >
+                                    {updatingId === leave._id ? "Updating..." : "Approve Leave"}
+                                </button>
+                                </div>
                                 )}
                             </article>
                         ))}

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate,  Link } from "react-router-dom";
 import axios from "axios";
+import { io } from "socket.io-client";
 import { API_BASE_URL } from "../config/api";
 import "./SuperAdminDashboard.css";
 
@@ -14,6 +15,7 @@ const AVAILABLE_PERMISSIONS = [
     { value: "employee.edit", label: "Delete Employees" },
     { value: "attendance.view", label: "View Attendance" },
     { value: "leaves.manage", label: "Manage Leaves" },
+    { value: "payroll.manage", label: "Manage Payroll" },
 ];
 
 function SuperAdminDashboard() {
@@ -23,6 +25,7 @@ function SuperAdminDashboard() {
     const [presentToday, setPresentToday] = useState(0);
     const [pendingLeaves, setPendingLeaves] = useState(0);
 
+    const [unreadCount, setUnreadCount] = useState(0);
     const [admins, setAdmins] = useState([]);
     const [loadingAdmins, setLoadingAdmins] = useState(true);
     const [creatingAdmin, setCreatingAdmin] = useState(false);
@@ -125,6 +128,48 @@ function SuperAdminDashboard() {
         loadDashboard();
         loadAdmins();
     }, [navigate, getHeaders, loadAdmins]);
+
+    // Fetch Super Admin notifications
+useEffect(() => {
+    const token = sessionStorage.getItem("adminToken");
+
+    if (!token) return;
+
+    const headers = {
+        Authorization: `Bearer ${token}`,
+    };
+
+    const fetchNotifications = async () => {
+        try {
+            const response = await axios.get(
+                `${API}/notifications/my`,
+                { headers }
+            );
+
+            setUnreadCount(response.data.unreadCount || 0);
+        } catch (error) {
+            console.error(
+                "Failed to fetch Super Admin notifications:",
+                error.response?.data || error.message
+            );
+        }
+    };
+
+    fetchNotifications();
+
+    const socket = io(API_BASE_URL, {
+        auth: {
+            token,
+            role: "admin",
+        },
+    });
+
+    socket.on("admin-payroll-notification", fetchNotifications);
+
+    return () => {
+        socket.disconnect();
+    };
+}, []);
 
     // Toggle permissions while creating an Admin
     const togglePermission = (permission) => {
@@ -357,6 +402,15 @@ function SuperAdminDashboard() {
                     <Link to="/employees">👥 Employees</Link>
                     <Link to="/attendance">🕒 Attendance</Link>
                     <Link to="/leaves">📅 Leaves</Link>
+                    <Link to="/payroll">💰 Payroll Management</Link>
+                    <Link to="/admin-notifications">
+                    <span>🔔 Notifications</span>
+                    {unreadCount > 0 && (
+                        <span className="superadmin-notification-count">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                    )}
+                </Link>
                 </nav>
             </aside>
 

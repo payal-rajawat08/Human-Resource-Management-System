@@ -11,13 +11,13 @@ const authMiddleware = async (req, res, next) => {
             });
         }
         const token = authHeader.slice(7).trim();
-
+        
         if (!token) {
             return res.status(401).json({
                 message: "Token required",
             });
         }
-
+        
         if (!process.env.JWT_SECRET) {
             console.error("JWT_SECRET is not configured");
 
@@ -47,6 +47,7 @@ const authMiddleware = async (req, res, next) => {
         req.employee = employee;
 
         return next();
+        
     } catch (error) {
         if (
             error.name === "JsonWebTokenError" ||

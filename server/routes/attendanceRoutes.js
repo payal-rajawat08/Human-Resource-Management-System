@@ -644,11 +644,14 @@ router.get("/sessions/current", authMiddleware, async (req, res) => {
     }
 });
 
+
 router.get("/monthly", authMiddleware, async (req, res) => {
     try {
         const { month, year } = req.query;
+
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.max(1, parseInt(req.query.limit) || 10);
+
         const selectedMonth = Number(month);
         const selectedYear = Number(year);
 
@@ -692,147 +695,257 @@ router.get("/monthly", authMiddleware, async (req, res) => {
         const activeSession = await WorkSession.findOne({
             employeeId: req.employeeId,
             status: "open",
-        });
+        }).sort({ startedAt: -1 });
 
+        let liveSession = null;
 
-        const hasActiveWorkSession = Boolean(activeSession);
-
-        console.log("MONTHLY DEBUG:", {
-            employeeId: req.employeeId,
-            activeSessionFound: hasActiveWorkSession,
-            activeSessionId: activeSession?._id,
-        });
-
-        
-const dailyMap = new Map();
-
-for (const record of records) {
-    const dateKey = new Date(record.date).toLocaleDateString(
-        "en-CA",
-        { timeZone: "Asia/Kolkata" }
-    );
-
-    if (!dailyMap.has(dateKey)) {
-        dailyMap.set(dateKey, {
-            date: dateKey,
-            status: "PRESENT",
-            workMode: record.workMode,
-            sessions: 0,
-            grossMinutes: 0,
-            breakMinutes: 0,
-            noShareMinutes: 0,
-            netWorkingMinutes: 0,
-            creditedMinutes: 0,
-            interruptionsCount: 0,
-            firstLoginAt: null,
-            lastLogoutAt: null,
-            hasOpenSession: false,
-        });
-    }
-
-    const day = dailyMap.get(dateKey);
-
-    day.sessions++;
-
-    day.grossMinutes += record.grossMinutes || 0;
-    day.breakMinutes += record.breakMinutes || 0;
-    day.noShareMinutes += record.noShareMinutes || 0;
-    day.netWorkingMinutes += record.netWorkingMinutes || 0;
-    day.creditedMinutes += record.creditedMinutes || 0;
-    day.interruptionsCount += record.interruptionsCount || 0;
-
-    const todayKey = new Date().toLocaleDateString("en-CA", {
-        timeZone: "Asia/Kolkata",
-    });
-
-    if (dateKey === todayKey && hasActiveWorkSession) {
-        day.hasOpenSession = true;
-    }
-
-    if (record.startTime) {
+        // Calculate live working time for the currently open session.
         if (
-            !day.firstLoginAt ||
-            new Date(record.startTime) < new Date(day.firstLoginAt)
+            activeSession &&
+            new Date(activeSession.startedAt).toLocaleDateString(
+                "en-CA",
+                { timeZone: "Asia/Kolkata" }
+            ) === todayKey
         ) {
-            day.firstLoginAt = record.startTime;
+            const now = new Date();
+
+            const sessionBreaks = await Break.find({
+                sessionId: activeSession._id,
+                employeeId: req.employeeId,
+            }).select("startedAt endedAt");
+
+            const activeBreak = sessionBreaks.find(
+                (item) => !item.endedAt
+            );
+
+            const totalBreakSeconds = sessionBreaks.reduce(
+                (total, item) => {
+                    const breakStart = new Date(item.startedAt).getTime();
+
+                    const breakEnd = item.endedAt
+                        ? new Date(item.endedAt).getTime()
+                        : now.getTime();
+
+                    return (
+                        total +
+                        Math.max(
+                            0,
+                            Math.floor((breakEnd - breakStart) / 1000)
+                        )
+                    );
+                },
+                0
+            );
+
+            const elapsedSeconds = Math.max(
+                0,
+                Math.floor(
+                    (now.getTime() -
+                        new Date(activeSession.startedAt).getTime()) / 1000
+                )
+            );
+
+            const currentPausedSeconds =
+                !activeSession.shareActive && activeSession.pausedAt
+                    ? Math.max(
+                        0,
+                        Math.floor(
+                            (now.getTime() -
+                                new Date(activeSession.pausedAt).getTime()) / 1000
+                        )
+                    )
+                    : 0;
+
+            const totalPausedSeconds =
+                (activeSession.totalPausedSeconds || 0) +
+                currentPausedSeconds;
+
+            const liveNetSeconds = Math.max(
+                0,
+                elapsedSeconds -
+                    totalPausedSeconds -
+                    totalBreakSeconds
+            );
+
+            liveSession = {
+                startedAt: activeSession.startedAt,
+                asOf: now,
+                shareActive: activeSession.shareActive,
+                pausedAt: activeSession.pausedAt || null,
+                totalPausedSeconds:
+                    activeSession.totalPausedSeconds || 0,
+                activeBreakStartedAt:
+                    activeBreak?.startedAt || null,
+                totalBreakSeconds,
+                liveNetSeconds,
+            };
         }
-    }
-    if (record.lastLogoutAt) {
-        if (
-            !day.lastLogoutAt ||
-            new Date(record.lastLogoutAt) >
-            new Date(day.lastLogoutAt)
-        ) {
-            day.lastLogoutAt = record.lastLogoutAt;
+
+        const dailyMap = new Map();
+
+        for (const record of records) {
+            const dateKey = new Date(record.date).toLocaleDateString(
+                "en-CA",
+                { timeZone: "Asia/Kolkata" }
+            );
+
+            if (!dailyMap.has(dateKey)) {
+                dailyMap.set(dateKey, {
+                    date: dateKey,
+                    status: "PRESENT",
+                    workMode: record.workMode,
+                    sessions: 0,
+                    grossMinutes: 0,
+                    breakMinutes: 0,
+                    noShareMinutes: 0,
+                    netWorkingMinutes: 0,
+                    creditedMinutes: 0,
+                    interruptionsCount: 0,
+                    firstLoginAt: null,
+                    lastLogoutAt: null,
+                    hasOpenSession: false,
+                });
+            }
+
+            const day = dailyMap.get(dateKey);
+
+            day.sessions++;
+
+            day.grossMinutes += record.grossMinutes || 0;
+            day.breakMinutes += record.breakMinutes || 0;
+            day.noShareMinutes += record.noShareMinutes || 0;
+            day.netWorkingMinutes += record.netWorkingMinutes || 0;
+            day.creditedMinutes += record.creditedMinutes || 0;
+            day.interruptionsCount += record.interruptionsCount || 0;
+
+            if (record.startTime) {
+                if (
+                    !day.firstLoginAt ||
+                    new Date(record.startTime) <
+                        new Date(day.firstLoginAt)
+                ) {
+                    day.firstLoginAt = record.startTime;
+                }
+            }
+
+            if (record.lastLogoutAt) {
+                if (
+                    !day.lastLogoutAt ||
+                    new Date(record.lastLogoutAt) >
+                        new Date(day.lastLogoutAt)
+                ) {
+                    day.lastLogoutAt = record.lastLogoutAt;
+                }
+            }
         }
-    }
-   
-}
-for (const day of dailyMap.values()) {
-    if (day.hasOpenSession) {
-        day.lastLogoutAt = null;
-    }
-}
-const dailyRecords = Array.from(dailyMap.values()).sort(
-    (a, b) => a.date.localeCompare(b.date)
-);
-const totalDays = dailyRecords.length;
-const totalPages = Math.ceil(totalDays / limit);
 
-const paginatedRecords = dailyRecords.slice(
-    (page - 1) * limit,
-    page * limit
-);
+        // Attach live session values to today's attendance record.
+        if (liveSession) {
+            const dateKey = new Date(
+                liveSession.startedAt
+            ).toLocaleDateString("en-CA", {
+                timeZone: "Asia/Kolkata",
+            });
 
-const summary = dailyRecords.reduce(
-    (result, day) => {
-        result.grossMinutes += day.grossMinutes;
-        result.breakMinutes += day.breakMinutes;
-        result.noShareMinutes += day.noShareMinutes;
-        result.netWorkingMinutes += day.netWorkingMinutes;
-        result.creditedMinutes += day.creditedMinutes;
+            if (dailyMap.has(dateKey)) {
+                const day = dailyMap.get(dateKey);
 
-        return result;
-    },
-    {
-        grossMinutes: 0,
-        breakMinutes: 0,
-        noShareMinutes: 0,
-        netWorkingMinutes: 0,
-        creditedMinutes: 0,
-    }
-);
+                day.hasOpenSession = true;
+                day.lastLogoutAt = null;
 
-summary.presentDays = dailyRecords.filter(
-    (day) => day.status === "PRESENT"
-).length;
+                const liveGrossMinutes = Math.floor(
+                    (new Date(liveSession.asOf).getTime() -
+                        new Date(liveSession.startedAt).getTime()) / 60000
+                );
 
-console.log(
-    "MONTHLY ATTENDANCE RESULT:",
-    dailyRecords.map((day) => ({
-        date: day.date,
-        firstLoginAt: day.firstLoginAt,
-        lastLogoutAt: day.lastLogoutAt,
-        hasOpenSession: day.hasOpenSession,
-    }))
-);
-return res.status(200).json({
-    dailyRecords: paginatedRecords,
-    summary,
-    totalDays,
-    totalPages,
-    month: selectedMonth,
-    year: selectedYear,
-    currentPage: page,
-    limit,
-});
+                const currentPausedSeconds =
+                    !liveSession.shareActive && liveSession.pausedAt
+                        ? Math.max(
+                            0,
+                            Math.floor(
+                                (new Date(liveSession.asOf).getTime() -
+                                    new Date(liveSession.pausedAt).getTime()) / 1000
+                            )
+                        )
+                        : 0;
+
+                const liveNoShareMinutes = Math.floor(
+                    (
+                        liveSession.totalPausedSeconds +
+                        currentPausedSeconds
+                    ) / 60
+                );
+
+                day.grossMinutes += liveGrossMinutes;
+                day.breakMinutes += Math.floor(
+                    liveSession.totalBreakSeconds / 60
+                );
+                day.noShareMinutes += liveNoShareMinutes;
+
+                day.netWorkingMinutes += Math.floor(
+                    liveSession.liveNetSeconds / 60
+                );
+
+                day.creditedMinutes += Math.floor(
+                    liveSession.liveNetSeconds / 60
+                );
+            }
+        }
+
+        const dailyRecords = Array.from(
+            dailyMap.values()
+        ).sort((a, b) => a.date.localeCompare(b.date));
+
+        const totalDays = dailyRecords.length;
+        const totalPages = Math.ceil(totalDays / limit);
+
+        const paginatedRecords = dailyRecords.slice(
+            (page - 1) * limit,
+            page * limit
+        );
+
+        const summary = dailyRecords.reduce(
+            (result, day) => {
+                result.grossMinutes += day.grossMinutes;
+                result.breakMinutes += day.breakMinutes;
+                result.noShareMinutes += day.noShareMinutes;
+                result.netWorkingMinutes += day.netWorkingMinutes;
+                result.creditedMinutes += day.creditedMinutes;
+
+                return result;
+            },
+            {
+                grossMinutes: 0,
+                breakMinutes: 0,
+                noShareMinutes: 0,
+                netWorkingMinutes: 0,
+                creditedMinutes: 0,
+            }
+        );
+
+        summary.presentDays = dailyRecords.filter(
+            (day) => day.status === "PRESENT"
+        ).length;
+
+        return res.status(200).json({
+            dailyRecords: paginatedRecords,
+            summary,
+            totalDays,
+            totalPages,
+            month: selectedMonth,
+            year: selectedYear,
+            currentPage: page,
+            limit,
+            liveSession,
+        });
+
     } catch (error) {
         console.error("Monthly attendance error:", error);
+
         return res.status(500).json({
             message: "Failed to fetch monthly attendance",
         });
     }
 });
-
 
 export default router;

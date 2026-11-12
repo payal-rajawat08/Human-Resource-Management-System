@@ -31,6 +31,7 @@ const EmployeeToday = () => {
     const [shareStoppedAt, setShareStoppedAt] = useState(null);
     const [expectedToday, setExpectedToday] = useState("00:00:00");
     const [totalNoShareSeconds, setTotalNoShareSeconds] = useState(0);
+    const [previousWorkSeconds, setPreviousWorkSeconds] = useState(0);
     const [timeline, setTimeline] = useState([]);
     const [timelineBreaks, setTimelineBreaks] = useState([]);
     const [employeeName] = useState(
@@ -38,6 +39,7 @@ const EmployeeToday = () => {
     );
 
     const getToken = () => sessionStorage.getItem("token");
+   
 
     const formatTime = (totalSeconds) => {
         const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -265,50 +267,61 @@ const handleLogout = async () => {
         };
     }, []);
 
+
     // Work timer
-    useEffect(() => {
+useEffect(() => {
+    const updateTimer = () => {
         if (!sessionActive || !sessionStartedAt) {
-            setWorkTime("00:00:00");
+            setWorkTime(formatTime(previousWorkSeconds));
             return;
         }
 
-        const updateTimer = () => {
-            const elapsed = Math.floor(
-                (Date.now() - new Date(sessionStartedAt).getTime()) / 1000
+        const elapsed = Math.floor(
+            (Date.now() - new Date(sessionStartedAt).getTime()) / 1000
+        );
+
+        let breaks = totalBreakSeconds;
+
+        if (breakStartedAt) {
+            breaks += Math.floor(
+                (Date.now() - new Date(breakStartedAt).getTime()) / 1000
             );
+        }
 
-            let breaks = totalBreakSeconds;
+        let noShare = totalNoShareSeconds;
 
-            if (breakStartedAt) {
-                breaks += Math.floor(
-                    (Date.now() - new Date(breakStartedAt).getTime()) / 1000
-                );
-            }
+        if (shareStoppedAt && !breakActive && !shareActive) {
+            noShare += Math.floor(
+                (Date.now() - shareStoppedAt) / 1000
+            );
+        }
 
-            let noShare = totalNoShareSeconds;
+        const currentSessionSeconds = Math.max(
+            0,
+            elapsed - breaks - noShare
+        );
 
-            if (shareStoppedAt && !breakActive && !shareActive) {
-                noShare += Math.floor((Date.now() - shareStoppedAt) / 1000);
-            }
+        setWorkTime(
+            formatTime(previousWorkSeconds + currentSessionSeconds)
+        );
+    };
 
-            setWorkTime(formatTime(elapsed - breaks - noShare));
-        };
+    updateTimer();
 
-        updateTimer();
-        const timer = setInterval(updateTimer, 1000);
+    const timer = setInterval(updateTimer, 1000);
 
-        return () => clearInterval(timer);
-    }, [
-        sessionActive,
-        sessionStartedAt,
-        totalBreakSeconds,
-        breakStartedAt,
-        totalNoShareSeconds,
-        shareStoppedAt,
-        breakActive,
-        shareActive,
-    ]);
-
+    return () => clearInterval(timer);
+}, [
+    sessionActive,
+    sessionStartedAt,
+    totalBreakSeconds,
+    breakStartedAt,
+    totalNoShareSeconds,
+    shareStoppedAt,
+    breakActive,
+    shareActive,
+    previousWorkSeconds,
+]);
     // Break timer
     useEffect(() => {
         if (!breakActive || !breakStartedAt) {
@@ -408,22 +421,31 @@ const handleLogout = async () => {
                     expectedToday: expectedHours,
                 } = response.data;
 
-                setExpectedToday(
-                    expectedHours
-                        ? `${String(Math.floor(expectedHours)).padStart(2, "0")}:00:00`
-                        : "00:00:00"
-                );
+                const now = new Date();
 
-                if (session) {
-                    sessionIdRef.current = session._id;
-                    setSessionActive(true);
-                    setShareActive(false);
-                    setShareStoppedAt(Date.now());
-                    setWorkMode(session.isWfo ? "WFO" : "WFH");
-                    setSessionStartedAt(session.startedAt);
-                    setBreakActive(Boolean(activeBreak));
-                    setBreakStartedAt(activeBreak ? activeBreak.startedAt : null);
-                }
+               const attendanceResponse = await axios.get(`${API}/monthly`, {
+                params: {
+                    month: now.getMonth() + 1,
+                    year: now.getFullYear(),
+                    page: 1,
+                    limit: 31,
+                },
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            const todayKey = now.toLocaleDateString("en-CA", {
+                timeZone: "Asia/Kolkata",
+            });
+
+            const todayRecord = attendanceResponse.data.dailyRecords?.find(
+                (day) => day.date === todayKey
+            );
+
+            setPreviousWorkSeconds(
+                (todayRecord?.netWorkingMinutes || 0) * 60
+            );
             } catch (error) {
                 console.error(
                     "Error fetching current session:",
@@ -703,43 +725,76 @@ const handleLogout = async () => {
     };
 
     // END WORK
-    const handleEndWork = async () => {
+   const handleEndWork = async () => {
+    try {
+        const token = getToken();
+
+        const response = await axios.post(
+            `${API}/sessions/end`,
+            {},
+            {
+                headers: { Authorization: `Bearer ${token}` },
+            }
+        );
+
+        console.log(response.data);
+
+        // Fetch today's total working time
         try {
-            const token = getToken();
+            const now = new Date();
 
-            const response = await axios.post(
-                `${API}/sessions/end`,
-                {},
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                }
+            const attendanceResponse = await axios.get(`${API}/monthly`, {
+                params: {
+                    month: now.getMonth() + 1,
+                    year: now.getFullYear(),
+                    page: 1,
+                    limit: 31,
+                },
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            const todayKey = now.toLocaleDateString("en-CA", {
+                timeZone: "Asia/Kolkata",
+            });
+
+            const todayRecord = attendanceResponse.data.dailyRecords?.find(
+                (day) => day.date === todayKey
             );
 
-            console.log(response.data);
-
-            stopScreenStream();
-            sessionIdRef.current = null;
-
-            setSessionActive(false);
-            setShareActive(false);
-            setShareStoppedAt(null);
-            setTotalNoShareSeconds(0);
-            setBreakActive(false);
-            setWorkMode("Not Detected");
-            setSessionStartedAt(null);
-            setWorkTime("00:00:00");
-            setBreakStartedAt(null);
-            setTotalBreakSeconds(0);
-        } catch (error) {
+            setPreviousWorkSeconds(
+                (todayRecord?.netWorkingMinutes || 0) * 60
+            );
+        } catch (refreshError) {
             console.error(
-                "Error ending work:",
-                error.response?.data || error.message
+                "Error refreshing today's attendance:",
+                refreshError.response?.data || refreshError.message
             );
-
-            alert(error.response?.data?.message || "Unable to end work");
         }
-    };
 
+        stopScreenStream();
+        sessionIdRef.current = null;
+
+        setSessionActive(false);
+        setShareActive(false);
+        setShareStoppedAt(null);
+        setTotalNoShareSeconds(0);
+        setBreakActive(false);
+        setWorkMode("Not Detected");
+        setSessionStartedAt(null);
+        setBreakStartedAt(null);
+        setTotalBreakSeconds(0);
+
+    } catch (error) {
+        console.error(
+            "Error ending work:",
+            error.response?.data || error.message
+        );
+
+        alert(error.response?.data?.message || "Unable to end work");
+    }
+};
     const canUseEmployeePanel =
         sessionStorage.getItem("userRole") === "employee" &&
         Boolean(sessionStorage.getItem("token"));

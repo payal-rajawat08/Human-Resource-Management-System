@@ -154,78 +154,6 @@ router.post("/common-login", async (req, res) => {
     }
 });
 
-// EXISTING EMPLOYEE LOGIN
-router.post("/login", async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        const employee = await Employee.findOne({ email });
-
-        if (!employee) {
-            return res.status(401).json({
-                message: "Invalid email or password",
-            });
-        }
-
-        const passwordMatch = await bcrypt.compare(
-            password,
-            employee.password
-        );
-
-        if (!passwordMatch) {
-            return res.status(401).json({
-                message: "Invalid email or password",
-            });
-        }
-
-        const token = jwt.sign(
-            { employeeId: employee._id },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
-
-        return res.status(200).json({
-            message: "Login successful",
-            token,
-            employeeId: employee._id,
-            employeeName: employee.name,
-        });
-    } catch (error) {
-        console.error("Employee login error:", error);
-
-        return res.status(500).json({
-            message: "Login failed",
-        });
-    }
-});
-// EXISTING EMPLOYEE LOGIN
-router.post("/login", async (req, res) => {
-    // tumhara existing login code
-});
-
-// EMPLOYEE LOGOUT
-router.post("/auth/logout", authMiddleware, async (req, res) => {
-    try {
-        const employeeId = req.employeeId;
-
-        if (employeeId) {
-            await Employee.findByIdAndUpdate(employeeId, {
-                isLoggedIn: false,
-                lastAppLogoutAt: new Date(),
-            });
-        }
-
-        return res.status(200).json({
-            message: "Logout successful",
-        });
-    } catch (error) {
-        console.error("Logout error:", error);
-
-        return res.status(500).json({
-            message: "Logout failed",
-        });
-    }
-});
 
 //  FORGOT PASSWORD
 router.post("/forgot-password", async (req, res) => {
@@ -322,5 +250,26 @@ router.post("/reset-password/:token", async (req, res) => {
         });
     }
 });
+// EMPLOYEE LOGOUT
+router.post("/auth/logout", authMiddleware, async (req, res) => {
+    try {
+        const employeeId = req.employeeId;
 
+        if (employeeId) {
+            await Employee.findByIdAndUpdate(employeeId, {
+                isLoggedIn: false,
+                lastAppLogoutAt: new Date(),
+            });
+        }
+
+        return res.status(200).json({
+            message: "Logout successful",
+        });
+    } catch (error) {
+        console.error("Logout error:", error);
+        return res.status(500).json({
+            message: "Logout failed",
+        });
+    }
+});
 export default router;

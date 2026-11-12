@@ -19,6 +19,8 @@ import connectDb from "./config/db.js";
 import sweepSessions from "./job/sessionSweeper.js";
 
 import salaryRoutes from "./routes/salaryRoutes.js";
+import salaryAdjustmentRoutes from "./routes/salaryAdjustmentRoutes.js";
+import payrollManagementRoutes from "./routes/payrollManagementRoutes.js";
 
 dotenv.config();
 
@@ -27,13 +29,14 @@ const server = createServer(app);
 
 const io = new Server(server, {
     cors: {
-    origin: [
-        "http://localhost:5173",
-        "http://192.168.1.2:5173",
-        "http://217.216.58.127:5173"
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-},
+        origin: [
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://192.168.1.2:5173",
+            "http://217.216.58.127:5173"
+        ],
+        methods: ["GET", "POST", "PUT", "DELETE"],
+    },
 });
 
 // Socket authentication
@@ -83,10 +86,12 @@ io.use(async (socket, next) => {
             .replace(/[\s_-]/g, "");
             if (
                 roleName !== "superadmin" &&
-                !permissions.includes("attendance.view")
-            ) {
-                return next(new Error("Permission denied"));
-            }
+                !permissions.some((permission) =>
+                    ["attendance.view", "payroll.manage"].includes(permission)
+            )
+        ) {
+            return next(new Error("Permission denied"));
+        }
             socket.data.role = "admin";
             socket.data.adminId = admin._id.toString();
             return next();
@@ -119,6 +124,9 @@ io.on("connection", (socket) => {
     console.log("Socket connected:", socket.id, socket.data.role);
     if (socket.data.role === "employee") {
         socket.join(socket.data.employeeId);
+    }
+    if (socket.data.role === "admin") {
+        socket.join(`admin:${socket.data.adminId}`);
     }
     socket.on("watch-employee-screen", async ({ employeeId } = {}, callback) => {
         try {
@@ -325,6 +333,8 @@ app.use("/api", officeIpRoutes);
 app.use("/api", attendanceRoutes);
 app.use("/api", authRoutes);
 app.use("/api", salaryRoutes);
+app.use("/api", salaryAdjustmentRoutes);
+app.use("/api", payrollManagementRoutes);
 
 app.get("/my-ip", (req, res) => {
     res.send(req.ip);
@@ -333,6 +343,6 @@ app.get("/my-ip", (req, res) => {
 connectDb();
 setInterval(sweepSessions, 30000);
 
-server.listen(8000, () => {
+server.listen(8000, "0.0.0.0", () => {
     console.log("Server running on port 8000");
 });

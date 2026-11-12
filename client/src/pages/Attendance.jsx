@@ -299,14 +299,13 @@ function Attendance() {
                                 <th>Email</th>
                                 <th>Status</th>
                                 <th>Start Time</th>
-                                <th>Work Duration</th>
                                 <th>Work Mode</th>
                             </tr>
                         </thead>
                         <tbody>
                             {paginatedEmployees.length === 0 ? (
                                 <tr>
-                                    <td className="attendance-empty-cell" colSpan="6">
+                                    <td className="attendance-empty-cell" colSpan="5">
                                         No matching employee records. Try another search or filter.
                                     </td>
                                 </tr>
@@ -327,7 +326,6 @@ function Attendance() {
                                             </span>
                                         </td>
                                         <td>{employee.startTime}</td>
-                                        <td className="attendance-duration">{employee.workDuration}</td>
                                         <td>
                                             {employee.workMode !== "—" ? (
                                                 <span className={`attendance-work-mode ${employee.workMode.toLowerCase()}`}>

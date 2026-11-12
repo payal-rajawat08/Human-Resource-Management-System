@@ -1,0 +1,143 @@
+
+.admin-notifications-page {
+    padding: 28px 32px;
+    width: 100%;
+    min-height: calc(100vh - 165px);
+    box-sizing: border-box;
+}
+
+.admin-notifications-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 25px;
+}
+
+.admin-notifications-page-header h2 {
+    margin: 0;
+    color: #111827;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.admin-notifications-page-header p {
+    margin: 7px 0 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.admin-notifications-unread {
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.admin-notifications-page-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.admin-notifications-page-item {
+    width: 100%;
+    padding: 18px 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-notifications-page-item:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.admin-notifications-page-item.unread {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.admin-notifications-page-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.admin-notifications-page-item-top strong {
+    color: #111827;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.unread-dot {
+    width: 9px;
+    height: 9px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: #2563eb;
+}
+
+.admin-notifications-page-item p {
+    margin: 9px 0;
+    color: #4b5563;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.admin-notifications-page-item small {
+    color: #94a3b8;
+    font-size: 11px;
+}
+
+.admin-notifications-empty {
+    padding: 65px 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+    text-align: center;
+}
+
+.admin-notifications-empty h3 {
+    margin: 0 0 8px;
+    color: #1f2937;
+    font-size: 17px;
+}
+
+.admin-notifications-empty p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    .admin-notifications-page {
+        padding: 20px 15px;
+    }
+
+    .admin-notifications-page-header h2 {
+        font-size: 21px;
+    }
+
+    .admin-notifications-page-item {
+        padding: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-notifications-page-header {
+        align-items: flex-start;
+    }
+
+    .admin-notifications-unread {
+        font-size: 11px;
+        padding: 7px 10px;
+    }
+}

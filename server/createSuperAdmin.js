@@ -41,6 +41,13 @@ async function createSuperAdmin() {
                 'Super Admin role not found. Check the "roles" collection.'
             );
         }
+        const existingSuperAdmin = await Admin.findOne({
+            role: superAdminRole._id,
+        });
+        
+        if (existingSuperAdmin) {
+            throw new Error("Only one Super Admin is allowed.");
+        }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 

@@ -12,6 +12,10 @@ import Leave from "../models/Leave.js";
 import LeavePolicy from "../models/LeavePolicy.js";
 import WorkingHourPolicy from "../models/WorkingHourPolicy.js";
 import SalaryAdjustment from "../models/SalaryAdjustment.js";
+import Notification from "../models/Notification.js";
+import sendEmail from "../utils/sendEmail.js";
+import Admin from "../models/Admin.js";
+import AdminPayrollNotification from "../models/AdminPayrollNotification.js";
 
 const router = express.Router();
 router.use(express.json());
@@ -138,7 +142,13 @@ router.put("/salary-structures/:id", adminAuthMiddleware, permissionMiddleware("
 
 router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("payroll.manage"), async (req, res) => {
     try {
-        const { employeeId, month, year, asOfDate } = req.body;
+        const {
+            employeeId,
+            month, 
+            year, 
+            asOfDate,
+            saveDraft = false,
+        } = req.body;
 
         const numericMonth = Number(month);
         const numericYear = Number(year);
@@ -197,7 +207,7 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
         };
 
         // Current month preview must not be saved
-        if (payroll.isPreview) {
+        if (!saveDraft) {
             return res.status(200).json({
                 message: "Payroll preview calculated successfully",
                 isPreview: true,
@@ -217,7 +227,7 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
             existingPayroll &&
             (
                 existingPayroll.status !== "draft" ||
-                existingPayroll.employeeReview !== "pending"
+                !["pending", "disputed"].includes(existingPayroll.employeeReview)
             )
         ) {
             return res.status(409).json({
@@ -269,7 +279,7 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
                     netSalary: calculatedPayroll.netSalary,
 
                     status: "draft",
-                    employeeReview: "pending",
+                    employeeReview: existingPayroll?.employeeReview || "pending",
                 },
             },
             {
@@ -280,8 +290,9 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
         );
 
         return res.status(200).json({
-            message: "Payroll calculated successfully",
+            message: "Payroll calculated and saved successfully",
             isPreview: false,
+            isPartialPeriod: Boolean(payroll.isPreview), 
             payroll: savedPayroll,
             payrollItems,
         });
@@ -416,7 +427,7 @@ router.get("/payroll/employees",adminAuthMiddleware,permissionMiddleware("payrol
     }
 );
 // Fetch one employee's monthly payroll details
-router.get("/payroll/employees/:employeeId/detail",adminAuthMiddleware,permissionMiddleware("payroll.manage"),
+router.get("/payroll/employees/:employeeId/detail", adminAuthMiddleware, permissionMiddleware("payroll.manage"),
     async (req, res) => {
         try {
             const { employeeId } = req.params;
@@ -523,6 +534,16 @@ router.get("/payroll/employees/:employeeId/detail",adminAuthMiddleware,permissio
                     creditedMinutes: 0,
                 }
             );
+            let payrollCalculation = null;
+
+            if(salaryStructure){
+                payrollCalculation = await calculateEmployeePayroll({
+                    employeeId,
+                    month,
+                    year,
+                    asOfDate: new Date(periodEnd.getTime()-1),
+                });
+            }
 
             const policyWorkingDays = workingPolicy?.workingDays || [];
             let expectedWorkingDays = 0;
@@ -625,7 +646,10 @@ router.get("/payroll/employees/:employeeId/detail",adminAuthMiddleware,permissio
                         (attendanceSummary.netWorkingMinutes / 60).toFixed(2)
                     ),
                     creditedHours: Number(
-                        (attendanceSummary.creditedMinutes / 60).toFixed(2)
+                        (
+                            (payrollCalculation?.totalCreditedMinutes ??
+                                attendanceSummary.creditedMinutes) / 60
+                        ).toFixed(2)
                     ),
                 },
 
@@ -666,6 +690,216 @@ router.get("/payroll", adminAuthMiddleware, permissionMiddleware("payroll.manage
     }
 });
 
+// Get logged-in employee's own payroll records
+router.get("/payroll/my", authMiddleware, async (req, res) => {
+    try {
+        const { month, year } = req.query;
+
+        const filter = {
+            employeeId: req.employeeId,
+        };
+
+        if (month) {
+            filter.month = Number(month);
+        }
+
+        if (year) {
+            filter.year = Number(year);
+        }
+
+        const payrolls = await PayrollRun.find(filter)
+            .sort({ year: -1, month: -1 })
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            payrolls,
+        });
+    } catch (error) {
+        console.error("Employee payroll fetch error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch payroll records",
+        });
+    }
+});
+
+// Send payroll to employee for review
+router.post("/payroll/:id/send-to-employee", adminAuthMiddleware, permissionMiddleware("payroll.manage"),async (req, res) => {
+    try {
+        const { id } = req.params;
+        const payroll = await PayrollRun.findById(id);
+        if (!payroll) {
+            return res.status(404).json({
+                message: "Payroll not found",
+            });
+        }
+        if (
+            payroll.status !== "draft" ||
+            payroll.employeeReview !== "pending"
+        ) {
+            return res.status(409).json({
+                message: "Only pending draft payroll can be sent for review.",
+            });
+        }
+        const employee = await Employee.findById(payroll.employeeId)
+        .select("name email");
+        if (!employee) {
+            return res.status(404).json({
+                message: "Employee not found",
+            });
+        }
+        if (!employee.email) {
+            return res.status(400).json({
+                message: "Employee email address is missing.",
+            });
+        }
+        let notification = await Notification.findOne({
+            employeeId: employee._id,
+            relatedPayroll: payroll._id,
+            type: "payroll",
+        });
+        if (!notification) {
+            notification = await Notification.create({
+                employeeId: employee._id,
+                title: "Payroll Ready for Review",
+                message: `Your payroll for ${payroll.month}/${payroll.year} is ready. Please review and accept or raise a dispute.`,
+                type: "payroll",
+                relatedPayroll: payroll._id,
+            });
+        }
+        if (req.io) {
+            req.io.to(String(employee._id)).emit(
+                "payroll-notification",
+                {
+                    _id: notification._id,
+                    title: notification.title,
+                    message: notification.message,
+                    type: notification.type,
+                    relatedPayroll: payroll._id,
+                    isRead: notification.isRead,
+                    createdAt: notification.createdAt,
+                }
+            );
+        }
+        if (!notification.emailSent) {
+            try {
+                await sendEmail(
+                    employee.email,
+                    "Payroll Ready for Review",
+                    `
+                    <h2>Hello ${employee.name || "Employee"},</h2>
+                    <p>Your payroll for
+                    ${payroll.month}/${payroll.year}
+                    is ready for review.</p>
+                    <p>Please log in to your employee dashboard
+                            to review your payroll and accept it or raise a dispute.</p>
+                            <p>Regards,<br>HR Team</p>
+                        `
+                    );
+
+                    notification.emailSent = true;
+                    notification.emailSentAt = new Date();
+
+                    await notification.save();
+
+                } catch (emailError) {
+                    console.error("Payroll email error:", emailError);
+
+                    return res.status(200).json({
+                        message: "In-app notification created, but email delivery failed. You can retry sending.",
+                        emailSent: false,
+                        notification,
+                    });
+                }
+            }
+
+            return res.status(200).json({
+                message: "Payroll sent to employee successfully.",
+                emailSent: notification.emailSent,
+                notification,
+            });
+
+        } catch (error) {
+            console.error("Send payroll error:", error);
+
+            return res.status(500).json({
+                message: "Failed to send payroll to employee.",
+            });
+        }
+    }
+);
+
+// Get logged-in employee's notifications
+router.get("/notifications/my", authMiddleware, async (req, res) => {
+    try {
+        const notifications = await Notification.find({
+            employeeId: req.employeeId,
+        })
+            .populate("relatedPayroll", "month year netSalary status employeeReview")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const unreadCount = notifications.filter(
+            (notification) => !notification.isRead
+        ).length;
+
+        return res.status(200).json({
+            success: true,
+            notifications,
+            unreadCount,
+        });
+    } catch (error) {
+        console.error("Fetch notifications error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch notifications",
+        });
+    }
+});
+
+
+// Mark employee notification as read
+router.patch("/notifications/:id/read", authMiddleware, async (req, res) => {
+    try {
+        const notification = await Notification.findOneAndUpdate(
+            {
+                _id: req.params.id,
+                employeeId: req.employeeId,
+            },
+            {
+                $set: { isRead: true },
+            },
+            {
+                new: true,
+            }
+        );
+
+        if (!notification) {
+            return res.status(404).json({
+                success: false,
+                message: "Notification not found",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Notification marked as read",
+            notification,
+        });
+    } catch (error) {
+        console.error("Mark notification read error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update notification",
+        });
+    }
+});
+
+// Employee accepts payroll
 router.patch("/payroll/:id/accept", authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
@@ -690,19 +924,71 @@ router.patch("/payroll/:id/accept", authMiddleware, async (req, res) => {
             });
         }
 
-        if (payroll.employeeReview === "accepted") {
+        if (payroll.employeeReview !== "pending") {
             return res.status(400).json({
-                message: "Payroll already accepted",
+                message: "Only pending payroll can be accepted",
             });
         }
 
         payroll.employeeReview = "accepted";
         await payroll.save();
 
+        // Find admins with payroll.manage permission
+        const admins = await Admin.find({ isActive: true })
+            .select("_id permissions")
+            .populate("role", "name permissions");
+
+        const eligibleAdmins = admins.filter((admin) => {
+            const roleName = (admin.role?.name || "")
+                .toLowerCase()
+                .replace(/[\s_-]/g, "");
+
+            if (roleName === "superadmin") {
+                return true;
+            }
+
+            const permissions = Array.isArray(admin.permissions)
+                ? admin.permissions
+                : admin.role?.permissions || [];
+
+            return permissions.includes("payroll.manage");
+        });
+
+        const employee = await Employee.findById(payroll.employeeId)
+            .select("name");
+
+        const notificationMessage =
+            `${employee?.name || "An employee"} has accepted payroll for ` +
+            `${payroll.month}/${payroll.year}. It is ready for finalization.`;
+
+        if (eligibleAdmins.length > 0) {
+            const notifications = await AdminPayrollNotification.insertMany(
+                eligibleAdmins.map((admin) => ({
+                    adminId: admin._id,
+                    employeeId: payroll.employeeId,
+                    payrollId: payroll._id,
+                    title: "Payroll Accepted",
+                    message: notificationMessage,
+                    month: payroll.month,
+                    year: payroll.year,
+                }))
+            );
+
+            if (req.io) {
+                notifications.forEach((notification) => {
+                    req.io.to(`admin:${notification.adminId}`).emit(
+                        "admin-payroll-notification",
+                        notification
+                    );
+                });
+            }
+        }
+
         return res.status(200).json({
             message: "Payroll accepted successfully",
             payroll,
         });
+
     } catch (error) {
         console.error("Payroll acceptance error:", error);
 
@@ -761,6 +1047,121 @@ router.patch("/payroll/:id/dispute", authMiddleware, async (req, res) => {
     }
 });
 
+router.patch("/payroll/:id/dispute", authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { disputeReason } = req.body;
+
+        if (!disputeReason || !disputeReason.trim()) {
+            return res.status(400).json({
+                message: "Dispute reason is required",
+            });
+        }
+
+        const payroll = await PayrollRun.findById(id);
+
+        if (!payroll) {
+            return res.status(404).json({
+                message: "Payroll not found",
+            });
+        }
+
+        if (String(payroll.employeeId) !== String(req.employeeId)) {
+            return res.status(403).json({
+                message: "You can only access your own payroll",
+            });
+        }
+
+        if (
+            payroll.status !== "draft" ||
+            payroll.employeeReview !== "pending"
+        ) {
+            return res.status(400).json({
+                message: "Only pending draft payroll can be disputed",
+            });
+        }
+
+        payroll.employeeReview = "disputed";
+        payroll.disputeReason = disputeReason.trim();
+
+        await payroll.save();
+
+        // Find active Super Admins and admins with payroll.manage permission
+        const admins = await Admin.find({ isActive: true })
+            .select("_id permissions")
+            .populate("role", "name permissions");
+
+        const eligibleAdmins = admins.filter((admin) => {
+            const roleName = (admin.role?.name || "")
+                .toLowerCase()
+                .replace(/[\s_-]/g, "");
+
+            if (roleName === "superadmin") {
+                return true;
+            }
+
+            const effectivePermissions = Array.isArray(admin.permissions)
+                ? admin.permissions
+                : admin.role?.permissions || [];
+
+            return effectivePermissions.includes("payroll.manage");
+        });
+        console.log("Total active admins:", admins.length);
+
+        admins.forEach((admin) => {
+            console.log("Admin:", admin.email);
+            console.log("Role:", admin.role?.name);
+            console.log("Admin permissions:", admin.permissions);
+            console.log("Role permissions:", admin.role?.permissions);
+        });
+
+console.log("Eligible admins:", eligibleAdmins.length);
+
+        const employee = await Employee.findById(payroll.employeeId)
+            .select("name");
+
+        const notificationMessage =
+            `${employee?.name || "An employee"} has disputed payroll for ` +
+            `${payroll.month}/${payroll.year}. Reason: ${disputeReason.trim()}`;
+
+        if (eligibleAdmins.length > 0) {
+            const notifications = await AdminPayrollNotification.insertMany(
+                eligibleAdmins.map((admin) => ({
+                    adminId: admin._id,
+                    employeeId: payroll.employeeId,
+                    payrollId: payroll._id,
+                    title: "Payroll Dispute Received",
+                    message: notificationMessage,
+                    disputeReason: disputeReason.trim(),
+                    month: payroll.month,
+                    year: payroll.year,
+                }))
+            );
+            // Send real-time notification to allowed admin
+            if (req.io) {
+                notifications.forEach((notification) => {
+                    req.io.to(`admin:${notification.adminId}`).emit(
+                        "admin-payroll-notification",
+                        notification
+                    );
+                });
+            }
+        }
+
+        return res.status(200).json({
+            message: "Payroll disputed successfully",
+            payroll,
+        });
+    } catch (error) {
+        console.error("Payroll dispute error:", error);
+
+        return res.status(500).json({
+            message: "Server error",
+        });
+    }
+});
+
+
 router.patch("/payroll/:id/resolve-dispute", adminAuthMiddleware, permissionMiddleware("payroll.manage"), async (req, res) => {
     try {
         const { id } = req.params;
@@ -792,6 +1193,52 @@ router.patch("/payroll/:id/resolve-dispute", adminAuthMiddleware, permissionMidd
 
         await payroll.save();
 
+        // Create notification for employee after dispute resolution
+        const employee = await Employee.findById(payroll.employeeId)
+            .select("name email");
+
+        const notification = await Notification.create({
+            employeeId: payroll.employeeId,
+            title: "Payroll Dispute Resolved",
+            message: `Your payroll dispute for ${payroll.month}/${payroll.year} has been reviewed by the admin. Please check the resolution details in My Payroll.`,
+            type: "payroll",
+            relatedPayroll: payroll._id,
+        });
+
+        if (req.io) {
+            req.io.to(String(payroll.employeeId)).emit(
+                "payroll-notification",
+                {
+                    _id: notification._id,
+                    title: notification.title,
+                    message: notification.message,
+                    type: notification.type,
+                    relatedPayroll: payroll._id,
+                    isRead: false,
+                    createdAt: notification.createdAt,
+                }
+            );
+        }
+
+        if (employee?.email) {
+            try {
+                await sendEmail(
+                    employee.email,
+                    "Payroll Dispute Resolved",
+                    `
+                       <h2>Hello ${employee.name || "Employee"},</h2>
+                       <p>Your payroll dispute for ${payroll.month}/${payroll.year} has been reviewed.</p>
+                       <p>Please log in to your employee dashboard to view the resolution note.</p>
+                       <p>Regards,<br>HR Team</p>
+                    `
+                );
+                notification.emailSent = true;
+                notification.emailSentAt = new Date();
+                await notification.save();
+            } catch (emailError) {
+                console.error("Dispute resolution email error:", emailError);
+            }
+        }
         return res.status(200).json({
             message: "Payroll dispute resolved successfully",
             resolutionNote,
@@ -1044,11 +1491,7 @@ router.post("/payroll-adjustments", adminAuthMiddleware, permissionMiddleware("p
         }
     }
 );
-router.post(
-    "/payroll-items",
-    adminAuthMiddleware,
-    permissionMiddleware("payroll.manage"),
-    async (req, res) => {
+router.post("/payroll-items",adminAuthMiddleware,permissionMiddleware("payroll.manage"),async (req, res) => {
         try {
             const {
                 employeeId,
@@ -1098,7 +1541,7 @@ router.post(
                 existingPayroll &&
                 (
                     existingPayroll.status !== "draft" ||
-                    existingPayroll.employeeReview !== "pending"
+                    !["pending","disputed"].includes(existingPayroll.employeeReview)
                 )
             ) {
                 return res.status(409).json({
@@ -1199,6 +1642,78 @@ router.get("/payroll-items", adminAuthMiddleware, permissionMiddleware("payroll.
 
             return res.status(500).json({
                 message: "Failed to fetch payroll items",
+            });
+        }
+    }
+);
+
+// Get logged-in admin's payroll notifications
+router.get(
+    "/admin/notifications/my",
+    adminAuthMiddleware,
+    permissionMiddleware("payroll.manage"),
+    async (req, res) => {
+        try {
+            const notifications = await AdminPayrollNotification.find({
+                adminId: req.adminId,
+            })
+                .populate("employeeId", "name email")
+                .populate("payrollId", "month year netSalary employeeReview")
+                .sort({ createdAt: -1 })
+                .lean();
+
+            const unreadCount = notifications.filter(
+                (notification) => !notification.isRead
+            ).length;
+
+            return res.status(200).json({
+                success: true,
+                notifications,
+                unreadCount,
+            });
+        } catch (error) {
+            console.error("Fetch admin payroll notifications error:", error);
+
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch admin notifications",
+            });
+        }
+    }
+);
+// Mark admin payroll notification as read
+router.patch( "/admin/notifications/:id/read",adminAuthMiddleware,permissionMiddleware("payroll.manage"),
+    async (req, res) => {
+        try {
+            const notification = await AdminPayrollNotification.findOneAndUpdate(
+                {
+                    _id: req.params.id,
+                    adminId: req.adminId,
+                },
+                {
+                    $set: { isRead: true },
+                },
+                { new: true }
+            );
+
+            if (!notification) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Notification not found",
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "Notification marked as read",
+                notification,
+            });
+        } catch (error) {
+            console.error("Mark admin notification read error:", error);
+
+            return res.status(500).json({
+                success: false,
+                message: "Failed to update notification",
             });
         }
     }

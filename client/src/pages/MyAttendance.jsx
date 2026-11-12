@@ -21,6 +21,12 @@ function MyAttendance() {
     const [error, setError] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+    const [clockNow, setClockNow] = useState(Date.now());
+
+    useEffect(() => {
+        const timer = setInterval(() => setClockNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
     setCurrentPage(1);
@@ -100,8 +106,92 @@ function MyAttendance() {
     };
 }, [month, year, currentPage, pageSize]);
 
-    const summary = data?.summary;
-    const dailyRecords = data?.dailyRecords || [];
+    const liveSession = data?.liveSession;
+
+    // Update the open session locally every second without repeated API calls.
+    const liveNetMinutesNow = liveSession
+        ? (() => {
+            const asOfMs = new Date(liveSession.asOf).getTime();
+            const startedAtMs = new Date(liveSession.startedAt).getTime();
+            const elapsedSeconds = Math.max(
+                0,
+                Math.floor((clockNow - startedAtMs) / 1000)
+            );
+
+            const pausedNowSeconds =
+                !liveSession.shareActive && liveSession.pausedAt
+                    ? Math.max(
+                        0,
+                        Math.floor((clockNow - new Date(liveSession.pausedAt).getTime()) / 1000)
+                    )
+                    : 0;
+
+            const activeBreakAtSnapshot = liveSession.activeBreakStartedAt
+                ? Math.max(
+                    0,
+                    Math.floor(
+                        (asOfMs - new Date(liveSession.activeBreakStartedAt).getTime()) / 1000
+                    )
+                )
+                : 0;
+
+            const activeBreakNow = liveSession.activeBreakStartedAt
+                ? Math.max(
+                    0,
+                    Math.floor(
+                        (clockNow - new Date(liveSession.activeBreakStartedAt).getTime()) / 1000
+                    )
+                )
+                : 0;
+
+            const totalBreakSeconds =
+                (liveSession.totalBreakSeconds || 0) -
+                activeBreakAtSnapshot +
+                activeBreakNow;
+
+            const noShareSeconds =
+                (liveSession.totalPausedSeconds || 0) + pausedNowSeconds;
+
+            return Math.floor(
+                Math.max(0, elapsedSeconds - noShareSeconds - totalBreakSeconds) / 60
+            );
+        })()
+        : null;
+
+    const liveNetMinuteDelta = liveSession
+        ? liveNetMinutesNow - Math.floor((liveSession.liveNetSeconds || 0) / 60)
+        : 0;
+
+    const summary = data?.summary
+        ? {
+            ...data.summary,
+            netWorkingMinutes: Math.max(
+                0,
+                (data.summary.netWorkingMinutes || 0) + liveNetMinuteDelta
+            ),
+            creditedMinutes: Math.max(
+                0,
+                (data.summary.creditedMinutes || 0) + liveNetMinuteDelta
+            ),
+        }
+        : data?.summary;
+
+    const dailyRecords = (data?.dailyRecords || []).map((day) => {
+        if (!liveSession || !day.hasOpenSession) return day;
+
+        return {
+            ...day,
+            netWorkingMinutes: Math.max(
+                0,
+                (day.netWorkingMinutes || 0) + liveNetMinuteDelta
+            ),
+            creditedMinutes: Math.max(
+                0,
+                (day.creditedMinutes || 0) + liveNetMinuteDelta
+            ),
+        };
+    });
+
     const totalPages = Math.max(1, data?.totalPages || 1);
     const safePage = Math.min(currentPage, totalPages);
     const paginatedRecords = dailyRecords;

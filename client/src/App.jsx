@@ -2,7 +2,6 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import Login from "./pages/Login";
-import EmployeeToday from "./pages/EmployeeToday";
 import AdminDashboard from "./pages/AdminDashboard";
 import Employees from "./pages/Employees";
 import ResetPassword from "./pages/ResetPassword";
@@ -15,6 +14,10 @@ import AdminPermissionRoute from "./components/AdminPermissionRoute";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import MyAttendance from "./pages/MyAttendance";
 import DashboardLayout from "./components/DashboardLayout";
+import AdminPayroll from "./pages/AdminPayroll";
+import MyPayroll from "./pages/MyPayroll";
+import Notifications from "./pages/Notifications";
+import AdminNotifications from "./pages/AdminNotifications";
 
 function App() {
     const location = useLocation();
@@ -63,23 +66,14 @@ function App() {
                         : <Navigate to="/login" replace />
                 }
             >
-                <Route
-                    path="/employee-today"
-                    element={null}
-                />
-
-                <Route
-                    path="/apply-leave"
-                    element={<ApplyLeave />}
-                />
-
-                <Route
-                    path="/my-attendance"
-                    element={<MyAttendance />}
-                />
+                <Route path="/employee-today" element={null} />
+                <Route path="/apply-leave" element={<ApplyLeave />} />
+                <Route path="/my-attendance" element={<MyAttendance />} />
+                <Route path="/my-payroll" element={<MyPayroll />} />
+                <Route path="/notifications" element={<Notifications />} />
             </Route>
 
-            {/* Admin Panel */}
+            {/* Admin Dashboard - Own Layout */}
             <Route
                 path="/admin-dashboard"
                 element={
@@ -89,7 +83,7 @@ function App() {
                 }
             />
 
-            {/* Super Admin Panel */}
+            {/* Super Admin Dashboard - Own Layout */}
             <Route
                 path="/superadmin-dashboard"
                 element={
@@ -99,37 +93,57 @@ function App() {
                 }
             />
 
-           {/* Admin Panel Pages */}
-           <Route
-               element={
-                  isAdmin || isSuperAdmin
-                      ? <DashboardLayout />
-                      : <Navigate to="/login" replace />
-               }
+            {/* Admin Panel Pages */}
+            <Route
+                element={
+                    isAdmin || isSuperAdmin
+                        ? <DashboardLayout />
+                        : <Navigate to="/login" replace />
+                }
             >
-           <Route
-               path="/employees"
-               element={
-                   <AdminPermissionRoute permission="employees.view">
-                       <Employees />
-                   </AdminPermissionRoute>
-               }
-               />
-            <Route
-                path="/attendance"
-                element={
-                    <AdminPermissionRoute permission="attendance.view">
-                        <Attendance />
-                    </AdminPermissionRoute>
-                }
+                <Route
+                    path="/employees"
+                    element={
+                        <AdminPermissionRoute permission="employees.view">
+                            <Employees />
+                        </AdminPermissionRoute>
+                    }
                 />
-            <Route
-                path="/leaves"
-                element={
-                    <AdminPermissionRoute permission="leaves.manage">
-                        <Leaves />
-                    </AdminPermissionRoute>
-                }
+
+                <Route
+                    path="/attendance"
+                    element={
+                        <AdminPermissionRoute permission="attendance.view">
+                            <Attendance />
+                        </AdminPermissionRoute>
+                    }
+                />
+
+                <Route
+                    path="/leaves"
+                    element={
+                        <AdminPermissionRoute permission="leaves.manage">
+                            <Leaves />
+                        </AdminPermissionRoute>
+                    }
+                />
+
+                <Route
+                    path="/payroll"
+                    element={
+                        <AdminPermissionRoute permission="payroll.manage">
+                            <AdminPayroll />
+                        </AdminPermissionRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin-notifications"
+                    element={
+                        <AdminPermissionRoute permission="payroll.manage">
+                            <AdminNotifications />
+                        </AdminPermissionRoute>
+                    }
                 />
             </Route>
 
