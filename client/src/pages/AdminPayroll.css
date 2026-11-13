@@ -2059,3 +2059,332 @@
     .payroll-admin-tools-toggle { align-self: flex-start; }
     .payroll-admin-tools-content { padding: 0 10px 12px; }
 }
+
+/* Payment Modal */
+.payroll-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+.payroll-modal {
+    width: 100%;
+    max-width: 550px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #fff;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.2);
+}
+
+.payroll-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.payroll-modal-header h3 {
+    margin: 0;
+}
+
+.payroll-modal-header button {
+    border: none;
+    background: transparent;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.payroll-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 20px;
+}
+.payroll-slip-heading .payroll-btn {
+    min-height: 42px;
+    padding: 0 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+}
+.payroll-modal-header-actions .payroll-btn {
+    background: #0875d1;
+    color: #fff;
+    border: 1px solid #0875d1;
+}
+
+.payroll-modal-header-actions .payroll-btn:hover {
+    background: #0563b5;
+    border-color: #0563b5;
+}
+/* Payment Modal Buttons */
+.payroll-modal-actions button {
+    min-width: 145px;
+    height: 46px;
+    padding: 0 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    font-weight: 600;
+}
+/* Payment Modal Buttons - Final Fix */
+.payroll-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+    margin-top: 20px;
+}
+
+.payroll-modal-actions .payroll-btn {
+    width: 165px;
+    min-width: 165px;
+    height: 48px;
+    min-height: 48px;
+    margin: 0 !important;
+    padding: 0 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    transform: none;
+}
+
+/* Cancel - Red */
+.payroll-modal-actions .payroll-btn[type="button"] {
+    background: #dc3545 !important;
+    color: #fff !important;
+    border: 1px solid #dc3545 !important;
+}
+
+/* Record Payment - Green */
+.payroll-modal-actions .payroll-btn[type="submit"] {
+    background: #198754 !important;
+    color: #fff !important;
+    border: 1px solid #198754 !important;
+}
+
+.payroll-modal-actions .payroll-btn[type="button"]:hover {
+    background: #bb2d3b !important;
+}
+
+.payroll-modal-actions .payroll-btn[type="submit"]:hover {
+    background: #146c43 !important;
+}
+
+/* ===== FINAL PAYSLIP PRINT FIX v2 ===== */
+@page {
+    size: A4 portrait;
+    margin: 10mm;
+}
+
+@media print {
+    html,
+    body,
+    #root {
+        width: 100% !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+    }
+
+    /* Hide the application visually, but take the payslip out of
+       the modal's layout so hidden page content cannot push it down. */
+    body * {
+        visibility: hidden !important;
+    }
+
+    .payroll-print-area,
+    .payroll-print-area * {
+        visibility: visible !important;
+    }
+
+    .payroll-print-area {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+        transform: none !important;
+    }
+
+    .payroll-company-banner,
+    .payroll-slip-sheet {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+        height: auto !important;
+        max-height: none !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+        box-shadow: none !important;
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+
+    .payroll-company-banner {
+        margin-bottom: 8mm !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .payroll-slip-sheet {
+        padding: 0 !important;
+        border: 0 !important;
+        background: #fff !important;
+    }
+
+    .payroll-slip-heading .payroll-modal-header-actions,
+    .payroll-company-edit-trigger,
+    .payroll-company-edit,
+    .payroll-print-area .payroll-modal-overlay,
+    .payroll-print-area .payroll-modal,
+    .payroll-admin-adjustments-heading,
+    .payroll-admin-tools,
+    .payroll-admin-tools-content,
+    .payroll-form,
+    .payroll-table-wrapper,
+    .payroll-detail-heading,
+    .payroll-preview-admin-note {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* Remove modal sizing and scroll constraints in print. */
+    .payroll-modal-overlay {
+        position: static !important;
+        display: block !important;
+        width: auto !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+        backdrop-filter: none !important;
+    }
+
+    .payroll-detail-section {
+        position: static !important;
+        display: block !important;
+        width: auto !important;
+        max-width: none !important;
+        height: auto !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        animation: none !important;
+        transform: none !important;
+    }
+
+    .payroll-slip-heading {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+
+    .payroll-slip-ledger,
+    .payroll-detail-grid,
+    .payroll-attendance-metrics {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
+
+
+/* ===== PRINT COMPANY HEADER: MATCH ADMIN SCREEN LAYOUT ===== */
+@media print {
+    .payroll-print-area .payroll-company-banner {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 13px !important;
+        width: 100% !important;
+        min-height: 76px !important;
+        padding: 12px 15px !important;
+        box-sizing: border-box !important;
+    }
+
+    .payroll-print-area .payroll-company-mark {
+        display: grid !important;
+        place-items: center !important;
+        flex: 0 0 42px !important;
+        width: 42px !important;
+        min-width: 42px !important;
+        max-width: 42px !important;
+        height: 42px !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    .payroll-print-area .payroll-company-copy {
+        display: flex !important;
+        flex: 1 1 auto !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        align-content: center !important;
+        width: auto !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        gap: 4px 8px !important;
+    }
+
+    .payroll-print-area .payroll-company-copy strong {
+        display: inline-block !important;
+        flex: 0 0 auto !important;
+        margin: 0 !important;
+    }
+
+    .payroll-print-area .payroll-company-copy > span {
+        display: block !important;
+        flex: 0 0 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    .payroll-print-area .payroll-company-period {
+        display: flex !important;
+        flex: 0 0 auto !important;
+        flex-direction: column !important;
+        align-items: flex-end !important;
+        justify-content: center !important;
+        width: auto !important;
+        margin: 0 0 0 auto !important;
+        padding-left: 14px !important;
+        text-align: right !important;
+        white-space: nowrap !important;
+    }
+}

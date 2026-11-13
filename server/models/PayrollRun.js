@@ -144,7 +144,11 @@ const payrollRunSchema = new mongoose.Schema(
             default: 0,
             min: 0,
         },
-
+        incrementAmount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
         additionalDeductions: {
             type: Number,
             default: 0,

@@ -1,5 +1,5 @@
-
 import { useEffect, useState } from "react";
+import { io } from "socket.io-client";
 import axios from "axios";
 import { API_BASE_URL } from "../config/api";
 import "./MyPayroll.css";
@@ -51,6 +51,40 @@ function MyPayroll() {
     useEffect(() => {
         fetchPayrolls();
     }, [month, year]);
+
+    useEffect(() =>{
+        const token = sessionStorage.getItem("token");
+        const employeeId = sessionStorage.getItem("employeeId");
+
+        if(!token || !employeeId) return;
+
+        const socket = io(API_BASE_URL, {
+            auth: {
+                token,
+                role:"employee",
+            },
+        });
+
+        const refreshPayroll = (event) => {
+            if (
+                event?.employeeId &&
+                String(event.employeeId) !== String(employeeId)
+            )  {
+                return;
+            }
+            fetchPayrolls();
+        };
+        socket.on("payroll-status-updated", refreshPayroll);
+
+        socket.on("connect_error", (err) => {
+            console.error("Payroll socket connection failed:", err.message);
+        });
+
+        return () => {
+            socket.off("payroll-status-updated", refreshPayroll);
+            socket.disconnect();
+        };
+    }, [month,year]);
 
     const handleAccept = async (payrollId) => {
         const confirmed = window.confirm(
@@ -126,6 +160,12 @@ function MyPayroll() {
         "en-IN",
         { month: "long" }
     );
+    const getRemainingPayable = (payroll) =>
+    Math.max(
+        0,
+        Number(payroll.netSalary || 0) -
+        Number(payroll.totalPaidAmount || 0)
+    );
 
     return (
         <div className="my-payroll-page">
@@ -196,8 +236,9 @@ function MyPayroll() {
                 ) : (
                     payrolls.map((payroll) => {
                         const canReview =
-                            payroll.status === "draft" &&
+                            payroll.status === "under_review" &&
                             payroll.employeeReview === "pending";
+                        const remainingPayable = getRemainingPayable(payroll);
 
                         return (
                             <section
@@ -245,9 +286,16 @@ function MyPayroll() {
                                     </div>
 
                                     <div className="payroll-summary-box">
-                                        <span>Total Paid</span>
+                                        <span>Already Paid</span>
                                         <strong>
                                             {formatCurrency(payroll.totalPaidAmount)}
+                                        </strong>
+                                    </div>
+                                    
+                                    <div className="payroll-summary-box">
+                                        <span>Remaining Payable</span>
+                                        <strong>
+                                            {formatCurrency(remainingPayable)}
                                         </strong>
                                     </div>
 
@@ -295,11 +343,6 @@ function MyPayroll() {
                                     <div>
                                         <span>Additional Deductions</span>
                                         <strong>{formatCurrency(payroll.additionalDeductions)}</strong>
-                                    </div>
-
-                                    <div className="payroll-net-row">
-                                        <span>Final Net Salary</span>
-                                        <strong>{formatCurrency(payroll.netSalary)}</strong>
                                     </div>
                                 </div>
 

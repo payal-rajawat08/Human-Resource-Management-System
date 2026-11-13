@@ -4,130 +4,131 @@ import axios from "axios";
 import { API_BASE_URL } from "../config/api";
 import "./AdminPayroll.css";
 
-const money = (value) =>
-    `₹${Number(value || 0).toLocaleString("en-IN", {
+const money = ( value ) =>
+    `₹${Number( value || 0 ).toLocaleString( "en-IN", {
         maximumFractionDigits: 2,
-    })}`;
+    } )}`;
 
-const formatStatus = (value = "") =>
-    String(value || "—").replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const formatStatus = ( value = "" ) =>
+    String( value || "—" ).replaceAll( "_", " " ).replace( /\b\w/g, ( c ) => c.toUpperCase() );
 
-const formatDate = (value) => {
-    if (!value) return "—";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
+const formatDate = ( value ) => {
+    if ( !value ) return "—";
+    const date = new Date( value );
+    return Number.isNaN( date.getTime() )
         ? "—"
-        : date.toLocaleDateString("en-IN", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-          });
+        : date.toLocaleDateString( "en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        } );
 };
 
 function AdminPayroll() {
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(
         today.getMonth() + 1
-    ).padStart(2, "0")}`;
+    ).padStart( 2, "0" )}`;
 
-    const [employees, setEmployees] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [selectedMonth, setSelectedMonth] = useState(currentMonth);
-    const [pendingNotification, setPendingNotification] = useState(null);
-    const [search, setSearch] = useState("");
-    const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(10);
-    const [overviewFilter, setOverviewFilter] = useState("all");
-    const [salarySort, setSalarySort] = useState("desc");
-    const [pagination, setPagination] = useState({
+    const [employees, setEmployees] = useState( [] );
+    const [loading, setLoading] = useState( true );
+    const [error, setError] = useState( "" );
+    const [selectedMonth, setSelectedMonth] = useState( currentMonth );
+    const [pendingNotification, setPendingNotification] = useState( null );
+    const [search, setSearch] = useState( "" );
+    const [page, setPage] = useState( 1 );
+    const [limit, setLimit] = useState( 10 );
+    const [overviewFilter, setOverviewFilter] = useState( "all" );
+    const [salarySort, setSalarySort] = useState( "desc" );
+    const [pagination, setPagination] = useState( {
         totalEmployees: 0,
         totalPages: 1,
-    });
+    } );
 
-    const [selectedEmployee, setSelectedEmployee] = useState(null);
-    const [payrollDetails, setPayrollDetails] = useState(null);
-    const [detailLoading, setDetailLoading] = useState(false);
-    const [actionLoading, setActionLoading] = useState(false);
-    const [detailError, setDetailError] = useState("");
-    const [successMessage, setSuccessMessage] = useState("");
-    const [companyName, setCompanyName] = useState(() => localStorage.getItem("payrollCompanyName") || "Your Company");
-    const [isEditingCompany, setIsEditingCompany] = useState(false);
+    const [selectedEmployee, setSelectedEmployee] = useState( null );
+    const [payrollDetails, setPayrollDetails] = useState( null );
+    const [detailLoading, setDetailLoading] = useState( false );
+    const [actionLoading, setActionLoading] = useState( false );
+    const [detailError, setDetailError] = useState( "" );
+    const [successMessage, setSuccessMessage] = useState( "" );
+    const [companyName, setCompanyName] = useState( () => localStorage.getItem( "payrollCompanyName" ) || "Your Company" );
+    const [isEditingCompany, setIsEditingCompany] = useState( false );
 
-    const [itemForm, setItemForm] = useState({
+    const [itemForm, setItemForm] = useState( {
         itemType: "bonus",
         amount: "",
         note: "",
-    });
-    const [editingItemId, setEditingItemId] = useState(null);
+    } );
+    const [editingItemId, setEditingItemId] = useState( null );
 
-    const [adjustmentForm, setAdjustmentForm] = useState({
+    const [adjustmentForm, setAdjustmentForm] = useState( {
         deductionType: "shortfall",
         adjustmentType: "reduce",
         adjustedDeduction: "",
         reason: "",
-    });
+    } );
 
-    const [salaryCorrectionForm, setSalaryCorrectionForm] = useState({
+    const [salaryCorrectionForm, setSalaryCorrectionForm] = useState( {
         amount: "",
         reason: "",
-    });
+    } );
 
-    const [paymentForm, setPaymentForm] = useState({
+    const [paymentForm, setPaymentForm] = useState( {
         amount: "",
-        paymentDate: today.toISOString().slice(0, 10),
+        paymentDate: today.toISOString().slice( 0, 10 ),
         paymentMethod: "bank_transfer",
         reference: "",
         note: "",
-    });
+    } );
+    const [showPaymentModal, setShowPaymentModal] = useState( false );
 
-    const [resolutionNote, setResolutionNote] = useState("");
+    const [resolutionNote, setResolutionNote] = useState( "" );
 
-    const token = sessionStorage.getItem("adminToken");
+    const token = sessionStorage.getItem( "adminToken" );
     const headers = { Authorization: `Bearer ${token}` };
 
-    const [year, month] = selectedMonth.split("-").map(Number);
+    const [year, month] = selectedMonth.split( "-" ).map( Number );
     const isCurrentMonth = selectedMonth === currentMonth;
     const isFutureMonth = selectedMonth > currentMonth;
 
     const closeModal = () => {
-        setSelectedEmployee(null);
-        setPayrollDetails(null);
-        setDetailError("");
-        setSuccessMessage("");
-        setEditingItemId(null);
-        setAdjustmentForm({
+        setSelectedEmployee( null );
+        setPayrollDetails( null );
+        setDetailError( "" );
+        setSuccessMessage( "" );
+        setEditingItemId( null );
+        setAdjustmentForm( {
             deductionType: "shortfall",
             adjustmentType: "reduce",
             adjustedDeduction: "",
             reason: "",
-        });
-        setSalaryCorrectionForm({ amount: "", reason: "" });
-        setResolutionNote("");
+        } );
+        setSalaryCorrectionForm( { amount: "", reason: "" } );
+        setResolutionNote( "" );
     };
 
-    useEffect(() => {
-        if (!selectedEmployee) return undefined;
+    useEffect( () => {
+        if ( !selectedEmployee ) return undefined;
 
         const previousOverflow = document.body.style.overflow;
         document.body.style.overflow = "hidden";
 
-        const handleEscape = (event) => {
-            if (event.key === "Escape") closeModal();
+        const handleEscape = ( event ) => {
+            if ( event.key === "Escape" ) closeModal();
         };
 
-        window.addEventListener("keydown", handleEscape);
+        window.addEventListener( "keydown", handleEscape );
 
         return () => {
             document.body.style.overflow = previousOverflow;
-            window.removeEventListener("keydown", handleEscape);
+            window.removeEventListener( "keydown", handleEscape );
         };
-    }, [selectedEmployee]);
+    }, [selectedEmployee] );
 
     const fetchEmployees = async () => {
         try {
-            setLoading(true);
-            setError("");
+            setLoading( true );
+            setError( "" );
 
             const response = await axios.get(
                 `${API_BASE_URL}/api/payroll/employees`,
@@ -137,26 +138,26 @@ function AdminPayroll() {
                 }
             );
 
-            setEmployees(response.data.employees || []);
-            setPagination({
+            setEmployees( response.data.employees || [] );
+            setPagination( {
                 totalEmployees: response.data.totalEmployees || 0,
                 totalPages: response.data.totalPages || 1,
-            });
-        } catch (err) {
+            } );
+        } catch ( err ) {
             setError(
                 err.response?.data?.message || "Failed to fetch payroll records."
             );
         } finally {
-            setLoading(false);
+            setLoading( false );
         }
     };
 
-    useEffect(() => {
+    useEffect( () => {
         fetchEmployees();
         // Fetch whenever the selected month, page, limit or search changes.
-    }, [selectedMonth, page, limit, search]);
+    }, [selectedMonth, page, limit, search] );
 
-    const fetchPayrollDetails = async (employeeId) => {
+    const fetchPayrollDetails = async ( employeeId ) => {
         const response = await axios.get(
             `${API_BASE_URL}/api/payroll/employees/${employeeId}/detail`,
             {
@@ -165,26 +166,26 @@ function AdminPayroll() {
             }
         );
 
-        setPayrollDetails(response.data);
+        setPayrollDetails( response.data );
         return response.data;
     };
 
-    const handleViewPayroll = async (employee) => {
-        setSelectedEmployee(employee);
-        setDetailLoading(true);
-        setDetailError("");
-        setSuccessMessage("");
-        setPayrollDetails(null);
+    const handleViewPayroll = async ( employee ) => {
+        setSelectedEmployee( employee );
+        setDetailLoading( true );
+        setDetailError( "" );
+        setSuccessMessage( "" );
+        setPayrollDetails( null );
 
         try {
-            const details = await fetchPayrollDetails(employee._id);
+            const details = await fetchPayrollDetails( employee._id );
 
             // Current month opens as a live-to-date preview automatically.
             // It remains unsaved until the normal payroll finalization workflow.
             if (
                 !details?.payrollRun ||
-                (details.payrollRun.status === "draft" &&
-                    details.payrollRun.employeeReview === "pending")
+                ( details.payrollRun.status === "draft" &&
+                    details.payrollRun.employeeReview === "pending" )
             ) {
                 const previewResponse = await axios.post(
                     `${API_BASE_URL}/api/payroll/calculate`,
@@ -192,85 +193,74 @@ function AdminPayroll() {
                     { headers }
                 );
 
-                if (previewResponse.data?.isPreview) {
-                    setPayrollDetails({
+                if ( previewResponse.data?.isPreview ) {
+                    setPayrollDetails( {
                         ...details,
                         payrollRun: previewResponse.data.payroll,
                         payrollItems: previewResponse.data.payrollItems || [],
                         isPreview: true,
-                    });
+                    } );
                 }
             }
-        } catch (err) {
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message ||
                 "Failed to fetch employee payroll details."
             );
         } finally {
-            setDetailLoading(false);
+            setDetailLoading( false );
         }
     };
-    useEffect(() => {
-        if (!pendingNotification) return;
+    useEffect( () => {
+        if ( !pendingNotification ) return;
 
         const targetMonth = `${pendingNotification.year}-${String(
             pendingNotification.month
-        ).padStart(2, "0")}`;
+        ).padStart( 2, "0" )}`;
 
-        if (selectedMonth !== targetMonth) return;
+        if ( selectedMonth !== targetMonth ) return;
 
         const employee = pendingNotification.employeeId;
 
-        if (employee && typeof employee === "object" && employee._id) {
-            handleViewPayroll(employee);
-            setPendingNotification(null);
+        if ( employee && typeof employee === "object" && employee._id ) {
+            handleViewPayroll( employee );
+            setPendingNotification( null );
         }
-    }, [pendingNotification, selectedMonth, handleViewPayroll]);
+    }, [pendingNotification, selectedMonth, handleViewPayroll] );
 
     const refreshDetails = async () => {
-        if (!selectedEmployee) return;
-        await fetchPayrollDetails(selectedEmployee._id);
+        if ( !selectedEmployee ) return;
+        await fetchPayrollDetails( selectedEmployee._id );
         await fetchEmployees();
     };
 
     const refreshCurrentPreview = async () => {
-        if (!selectedEmployee) return;
+        if ( !selectedEmployee ) return;
         const response = await axios.post(
             `${API_BASE_URL}/api/payroll/calculate`,
             { employeeId: selectedEmployee._id, month, year },
             { headers }
         );
-        if (response.data?.isPreview) {
-            setPayrollDetails((previous) => ({
+        if ( response.data?.isPreview ) {
+            setPayrollDetails( ( previous ) => ( {
                 ...previous,
                 payrollRun: response.data.payroll,
                 payrollItems: response.data.payrollItems || [],
                 isPreview: true,
-            }));
+            } ) );
         }
         await fetchEmployees();
     };
 
     const handleCalculatePayroll = async () => {
-        if (!selectedEmployee || isFutureMonth) return;
+        if ( !selectedEmployee || isFutureMonth ) return;
 
         const existingRun = payrollDetails?.payrollRun;
 
-        if (
-            existingRun &&
-            !payrollDetails?.isPreview &&
-            existingRun.status === "finalized"
-        ) {
-            setDetailError(
-                "Finalized payroll cannot be recalculated."
-            );
-            return;
-        }
-
         try {
-            setActionLoading(true);
-            setDetailError("");
-            setSuccessMessage("");
+            setActionLoading( true );
+            setDetailError( "" );
+            setSuccessMessage( "" );
 
             const response = await axios.post(
                 `${API_BASE_URL}/api/payroll/calculate`,
@@ -282,50 +272,50 @@ function AdminPayroll() {
                 },
                 { headers }
             );
-            if (response.data.isPreview) {
-                setPayrollDetails((previous) => ({
+            if ( response.data.isPreview ) {
+                setPayrollDetails( ( previous ) => ( {
                     ...previous,
                     payrollRun: response.data.payroll,
                     payrollItems: response.data.payrollItems || [],
                     isPreview: true,
-                }));
+                } ) );
             } else {
                 await refreshDetails();
             }
 
             setSuccessMessage(
                 response.data.isPreview
-                ? "Payroll preview calculated. It has not been saved and cannot be paid."
-                : "Payroll calculated successfully."
+                    ? "Payroll preview calculated. It has not been saved and cannot be paid."
+                    : "Payroll calculated successfully."
             );
-        } catch (err) {
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Payroll calculation failed."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
     const handleSendPayroll = async () => {
         const payrollId = payrollDetails?.payrollRun?._id;
 
-        if (!payrollId || payrollDetails?.isPreview) {
-            setDetailError("Please save the payroll draft before sending it.");
+        if ( !payrollId || payrollDetails?.isPreview ) {
+            setDetailError( "Please save the payroll draft before sending it." );
             return;
         }
 
         const run = payrollDetails.payrollRun;
 
-        if (run.status !== "draft" || run.employeeReview !== "pending") {
-            setDetailError("Only pending draft payroll can be sent for review.");
+        if ( run.status !== "draft" || run.employeeReview !== "pending" ) {
+            setDetailError( "Only pending draft payroll can be sent for review." );
             return;
         }
 
         try {
-            setActionLoading(true);
-            setDetailError("");
-            setSuccessMessage("");
+            setActionLoading( true );
+            setDetailError( "" );
+            setSuccessMessage( "" );
 
             const response = await axios.post(
                 `${API_BASE_URL}/api/payroll/${payrollId}/send-to-employee`,
@@ -334,50 +324,56 @@ function AdminPayroll() {
             );
 
             await refreshDetails();
-            setSuccessMessage(response.data.message);
-        } catch (err) {
+            setSuccessMessage( response.data.message );
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Failed to send payroll to employee."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
-    const handleSaveItem = async (event) => {
+    const handleSaveItem = async ( event ) => {
         event.preventDefault();
 
-        if (!selectedEmployee || !payrollDetails) return;
+        if ( !selectedEmployee || !payrollDetails ) return;
 
         const run = payrollDetails.payrollRun;
-        if (
-            run &&
-            !payrollDetails?.isPreview &&
+       if (
+          run &&
+          !payrollDetails?.isPreview &&
+          !(
             (
-                run.status !== "draft" ||
-                !["pending","disputed"].includes(run.employeeReview)
-            )          
-        ){
-            setDetailError("Bonus or deduction cannot be changed after review.");
+                run.status === "draft" &&
+                ["pending", "disputed"].includes(run.employeeReview)
+            ) ||
+            (
+                run.status === "under_review" &&
+                run.employeeReview === "disputed"
+            )
+        )
+    ) {
+            setDetailError( "Bonus or deduction cannot be changed after review." );
             return;
-        }
+    }
 
-        if (isFutureMonth) {
-            setDetailError("Future month payroll is not available.");
+        if ( isFutureMonth ) {
+            setDetailError( "Future month payroll is not available." );
             return;
         }
 
         try {
-            setActionLoading(true);
-            setDetailError("");
-            setSuccessMessage("");
+            setActionLoading( true );
+            setDetailError( "" );
+            setSuccessMessage( "" );
 
-            if (editingItemId) {
+            if ( editingItemId ) {
                 await axios.put(
                     `${API_BASE_URL}/api/payroll-items/${editingItemId}`,
                     {
                         itemType: itemForm.itemType,
-                        amount: Number(itemForm.amount),
+                        amount: Number( itemForm.amount ),
                         note: itemForm.note.trim(),
                     },
                     { headers }
@@ -390,17 +386,17 @@ function AdminPayroll() {
                         month,
                         year,
                         itemType: itemForm.itemType,
-                        amount: Number(itemForm.amount),
+                        amount: Number( itemForm.amount ),
                         note: itemForm.note.trim(),
                     },
                     { headers }
                 );
             }
 
-            setItemForm({ itemType: "bonus", amount: "", note: "" });
-            setEditingItemId(null);
+            setItemForm( { itemType: "bonus", amount: "", note: "" } );
+            setEditingItemId( null );
 
-            if (payrollDetails?.isPreview || !payrollDetails?.payrollRun) {
+            if ( payrollDetails?.isPreview || !payrollDetails?.payrollRun ) {
                 await refreshCurrentPreview();
             } else {
                 await refreshDetails();
@@ -411,57 +407,63 @@ function AdminPayroll() {
                     ? "Payroll item saved. Till-date preview and net payable have been recalculated."
                     : "Payroll item saved and draft payroll net salary updated."
             );
-        } catch (err) {
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to save payroll item."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
-    const handleSaveSalaryAddition = async (event) => {
+    const handleSaveSalaryAddition = async ( event ) => {
         event.preventDefault();
 
-        if (!selectedEmployee || !payrollDetails) {
-            setDetailError("Payroll details are not available yet.");
+        if ( !selectedEmployee || !payrollDetails ) {
+            setDetailError( "Payroll details are not available yet." );
             return;
         }
 
         const run = payrollDetails.payrollRun;
-        const amount = Number(salaryCorrectionForm.amount);
+        const amount = Number( salaryCorrectionForm.amount );
 
         if (
             run &&
             !payrollDetails.isPreview &&
-            (
-                run.status !== "draft" ||
-                !["pending","disputed"].includes(run.employeeReview)
+            !(
+                (
+                    run.status === "draft" &&
+                    ["pending", "disputed"].includes(run.employeeReview)
+                ) ||
+                (
+                    run.status === "under_review" &&
+                    run.employeeReview === "disputed"
+                )
             )
-        ){
+        ) {
             setDetailError("Other earnings can only be added to an unreviewed draft or current preview.");
             return;
         }
 
-        if (isFutureMonth) {
-            setDetailError("Future month payroll is not available.");
+        if ( isFutureMonth ) {
+            setDetailError( "Future month payroll is not available." );
             return;
         }
 
-        if (!Number.isFinite(amount) || amount <= 0) {
-            setDetailError("Enter a valid salary addition greater than zero.");
+        if ( !Number.isFinite( amount ) || amount <= 0 ) {
+            setDetailError( "Enter a valid salary addition greater than zero." );
             return;
         }
 
-        if (!salaryCorrectionForm.reason.trim()) {
-            setDetailError("Salary addition reason is required.");
+        if ( !salaryCorrectionForm.reason.trim() ) {
+            setDetailError( "Salary addition reason is required." );
             return;
         }
 
         try {
-            setActionLoading(true);
-            setDetailError("");
-            setSuccessMessage("");
+            setActionLoading( true );
+            setDetailError( "" );
+            setSuccessMessage( "" );
 
             await axios.post(
                 `${API_BASE_URL}/api/payroll-items`,
@@ -476,35 +478,48 @@ function AdminPayroll() {
                 { headers }
             );
 
-            setSalaryCorrectionForm({ amount: "", reason: "" });
-            if (isCurrentMonth) await refreshCurrentPreview();
+            setSalaryCorrectionForm( { amount: "", reason: "" } );
+            if ( isCurrentMonth ) await refreshCurrentPreview();
             else await refreshDetails();
-            setSuccessMessage("Other earnings added and net payable recalculated.");
-        } catch (err) {
+            setSuccessMessage( "Other earnings added and net payable recalculated." );
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to apply salary addition."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
-    const handleSaveAdjustment = async (event) => {
+    const handleSaveAdjustment = async ( event ) => {
         event.preventDefault();
 
-        if (!selectedEmployee || !payrollDetails?.payrollRun) {
-            setDetailError("Calculate payroll before applying a deduction adjustment.");
+        if ( !selectedEmployee || !payrollDetails?.payrollRun ) {
+            setDetailError( "Calculate payroll before applying a deduction adjustment." );
             return;
         }
 
         const run = payrollDetails.payrollRun;
-        if (run.status !== "draft" || run.employeeReview !== "pending") {
-            setDetailError("Only unreviewed draft payroll can be adjusted.");
+
+        if (
+            !(
+                (
+                    run.status === "draft" &&
+                    ["pending", "disputed"].includes(run.employeeReview)
+                ) ||
+                (
+                    run.status === "under_review" &&
+                    run.employeeReview === "disputed"
+                )
+            )
+        ) {
+            setDetailError("Only pending or disputed payroll can be adjusted.");
             return;
         }
 
-        if (isFutureMonth || isCurrentMonth) {
-            setDetailError("Deduction adjustments are available only for completed payroll months.");
+
+        if ( isFutureMonth || isCurrentMonth ) {
+            setDetailError( "Deduction adjustments are available only for completed payroll months." );
             return;
         }
 
@@ -516,32 +531,32 @@ function AdminPayroll() {
 
         const adjusted = adjustmentForm.adjustmentType === "waive"
             ? 0
-            : Number(adjustmentForm.adjustedDeduction);
+            : Number( adjustmentForm.adjustedDeduction );
 
-        if (originalDeduction <= 0) {
-            setDetailError("There is no deduction available for this category.");
+        if ( originalDeduction <= 0 ) {
+            setDetailError( "There is no deduction available for this category." );
             return;
         }
 
         if (
-            !Number.isFinite(adjusted) ||
+            !Number.isFinite( adjusted ) ||
             adjusted < 0 ||
             adjusted >= originalDeduction ||
-            (adjustmentForm.adjustmentType === "reduce" && adjusted === 0)
+            ( adjustmentForm.adjustmentType === "reduce" && adjusted === 0 )
         ) {
-            setDetailError("Enter an adjusted deduction lower than the original amount. Use Full Waiver to set it to ₹0.");
+            setDetailError( "Enter an adjusted deduction lower than the original amount. Use Full Waiver to set it to ₹0." );
             return;
         }
 
-        if (!adjustmentForm.reason.trim()) {
-            setDetailError("Please enter a reason for this adjustment.");
+        if ( !adjustmentForm.reason.trim() ) {
+            setDetailError( "Please enter a reason for this adjustment." );
             return;
         }
 
         try {
-            setActionLoading(true);
-            setDetailError("");
-            setSuccessMessage("");
+            setActionLoading( true );
+            setDetailError( "" );
+            setSuccessMessage( "" );
 
             await axios.post(
                 `${API_BASE_URL}/api/payroll-adjustments`,
@@ -557,41 +572,41 @@ function AdminPayroll() {
                 { headers }
             );
 
-            setAdjustmentForm({
+            setAdjustmentForm( {
                 deductionType: "shortfall",
                 adjustmentType: "reduce",
                 adjustedDeduction: "",
                 reason: "",
-            });
+            } );
 
             await refreshDetails();
-            setSuccessMessage("Deduction adjustment applied and net salary updated.");
-        } catch (err) {
+            setSuccessMessage( "Deduction adjustment applied and net salary updated." );
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to apply deduction adjustment."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
-    const handleEditItem = (item) => {
-        setEditingItemId(item._id);
-        setItemForm({
+    const handleEditItem = ( item ) => {
+        setEditingItemId( item._id );
+        setItemForm( {
             itemType: item.itemType,
             amount: item.amount,
             note: item.note,
-        });
+        } );
     };
 
-    const handleDeleteItem = async (itemId) => {
-        if (!window.confirm("Are you sure you want to delete this payroll item?")) {
+    const handleDeleteItem = async ( itemId ) => {
+        if ( !window.confirm( "Are you sure you want to delete this payroll item?" ) ) {
             return;
         }
 
         try {
-            setActionLoading(true);
-            setDetailError("");
+            setActionLoading( true );
+            setDetailError( "" );
             await axios.delete(
                 `${API_BASE_URL}/api/payroll-items/${itemId}`,
                 { headers }
@@ -600,24 +615,24 @@ function AdminPayroll() {
             setSuccessMessage(
                 "Payroll item deleted. Recalculate payroll to refresh net salary."
             );
-        } catch (err) {
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to delete payroll item."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
-    const handleResolveDispute = async (event) => {
+    const handleResolveDispute = async ( event ) => {
         event.preventDefault();
 
         const runId = payrollDetails?.payrollRun?._id;
-        if (!runId || !resolutionNote.trim()) return;
+        if ( !runId || !resolutionNote.trim() ) return;
 
         try {
-            setActionLoading(true);
-            setDetailError("");
+            setActionLoading( true );
+            setDetailError( "" );
 
             await axios.patch(
                 `${API_BASE_URL}/api/payroll/${runId}/resolve-dispute`,
@@ -625,36 +640,36 @@ function AdminPayroll() {
                 { headers }
             );
 
-            setResolutionNote("");
+            setResolutionNote( "" );
             await refreshDetails();
-            setSuccessMessage("Employee dispute has been resolved.");
-        } catch (err) {
+            setSuccessMessage( "Employee dispute has been resolved." );
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to resolve dispute."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
     const handleFinalizePayroll = async () => {
         const run = payrollDetails?.payrollRun;
-        if (!run?._id) return;
+        if ( !run?._id ) return;
 
-        if (run.employeeReview !== "accepted") {
+        if ( run.employeeReview !== "accepted" ) {
             setDetailError(
                 "Employee must accept the payroll before it can be finalized."
             );
             return;
         }
 
-        if (!window.confirm("Finalize this payroll? This action cannot be undone.")) {
+        if ( !window.confirm( "Finalize this payroll? This action cannot be undone." ) ) {
             return;
         }
 
         try {
-            setActionLoading(true);
-            setDetailError("");
+            setActionLoading( true );
+            setDetailError( "" );
 
             await axios.patch(
                 `${API_BASE_URL}/api/payroll/${run._id}/finalize`,
@@ -663,31 +678,31 @@ function AdminPayroll() {
             );
 
             await refreshDetails();
-            setSuccessMessage("Payroll finalized successfully.");
-        } catch (err) {
+            setSuccessMessage( "Payroll finalized successfully." );
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to finalize payroll."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
-    const handleAddPayment = async (event) => {
+    const handleAddPayment = async ( event ) => {
         event.preventDefault();
 
         const run = payrollDetails?.payrollRun;
-        if (!run?._id || run.status !== "finalized" || isCurrentMonth) return;
+        if ( !run?._id || run.status !== "finalized" ) return;
 
         try {
-            setActionLoading(true);
-            setDetailError("");
-            setSuccessMessage("");
+            setActionLoading( true );
+            setDetailError( "" );
+            setSuccessMessage( "" );
 
             await axios.post(
                 `${API_BASE_URL}/api/payroll/${run._id}/payments`,
                 {
-                    amount: Number(paymentForm.amount),
+                    amount: Number( paymentForm.amount ),
                     paymentDate: paymentForm.paymentDate,
                     paymentMethod: paymentForm.paymentMethod,
                     reference: paymentForm.reference.trim(),
@@ -696,34 +711,34 @@ function AdminPayroll() {
                 { headers }
             );
 
-            setPaymentForm({
+            setPaymentForm( {
                 amount: "",
-                paymentDate: today.toISOString().slice(0, 10),
+                paymentDate: today.toISOString().slice( 0, 10 ),
                 paymentMethod: "bank_transfer",
                 reference: "",
                 note: "",
-            });
+            } );
 
             await refreshDetails();
-            setSuccessMessage("Payment recorded successfully.");
-        } catch (err) {
+            setSuccessMessage( "Payment recorded successfully." );
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to record payment."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
-    const handleDeletePayment = async (paymentId) => {
-        if (!window.confirm("Delete this payment record?")) return;
+    const handleDeletePayment = async ( paymentId ) => {
+        if ( !window.confirm( "Delete this payment record?" ) ) return;
 
         const runId = payrollDetails?.payrollRun?._id;
-        if (!runId) return;
+        if ( !runId ) return;
 
         try {
-            setActionLoading(true);
-            setDetailError("");
+            setActionLoading( true );
+            setDetailError( "" );
 
             await axios.delete(
                 `${API_BASE_URL}/api/payroll/${runId}/payments/${paymentId}`,
@@ -731,13 +746,13 @@ function AdminPayroll() {
             );
 
             await refreshDetails();
-            setSuccessMessage("Payment record deleted.");
-        } catch (err) {
+            setSuccessMessage( "Payment record deleted." );
+        } catch ( err ) {
             setDetailError(
                 err.response?.data?.message || "Unable to delete payment record."
             );
         } finally {
-            setActionLoading(false);
+            setActionLoading( false );
         }
     };
 
@@ -746,21 +761,22 @@ function AdminPayroll() {
     const payments = run?.payments || [];
 
     const bonusTotal = items
-        .filter((item) => item.itemType === "bonus")
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        .filter( ( item ) => item.itemType === "bonus" )
+        .reduce( ( sum, item ) => sum + Number( item.amount || 0 ), 0 );
 
     const incrementTotal = items
-        .filter((item) => item.itemType === "increment")
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        .filter( ( item ) => item.itemType === "increment" )
+        .reduce( ( sum, item ) => sum + Number( item.amount || 0 ), 0 );
 
     const deductionTotal = items
-        .filter((item) => item.itemType === "deduction")
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        .filter( ( item ) => item.itemType === "deduction" )
+        .reduce( ( sum, item ) => sum + Number( item.amount || 0 ), 0 );
 
-    const totalPaid = Number(run?.totalPaidAmount || 0);
-    const netSalary = Number(run?.netSalary || 0);
-    const balance = Math.max(0, netSalary - totalPaid);
+    const totalPaid = Number( run?.totalPaidAmount || 0 );
+    const netSalary = Number( run?.netSalary || 0 );
+    const balance = Math.max( 0, netSalary - totalPaid );
 
+    
     const canEditItems =
         !isFutureMonth &&
         (
@@ -769,43 +785,48 @@ function AdminPayroll() {
             (
                 run.status === "draft" &&
                 ["pending", "disputed"].includes(run.employeeReview)
+            ) ||
+            (
+                run.status === "under_review" &&
+                run.employeeReview === "disputed"
             )
         );
+
     const canRecordPayment =
-        !isCurrentMonth && run?.status === "finalized" && balance > 0;
+        run?.status === "finalized" && balance > 0;
 
     // These figures describe the employees currently visible on this page.
     const visibleSalaryTotal = employees.reduce(
-        (sum, employee) =>
-            sum + Number(employee.salaryStructure?.grossMonthly || 0),
+        ( sum, employee ) =>
+            sum + Number( employee.salaryStructure?.grossMonthly || 0 ),
         0
     );
     const draftCount = employees.filter(
-        (employee) => employee.payrollRun?.status === "draft"
+        ( employee ) => employee.payrollRun?.status === "draft"
     ).length;
     const paidCount = employees.filter(
-        (employee) =>
+        ( employee ) =>
             employee.payrollRun?.status === "finalized" &&
             employee.payrollRun?.paymentStatus === "paid"
     ).length;
 
     const displayedEmployees = employees
-        .filter((employee) => {
-            if (overviewFilter === "draft") return employee.payrollRun?.status === "draft";
-            if (overviewFilter === "paid") {
+        .filter( ( employee ) => {
+            if ( overviewFilter === "draft" ) return employee.payrollRun?.status === "draft";
+            if ( overviewFilter === "paid" ) {
                 return employee.payrollRun?.status === "finalized" &&
                     employee.payrollRun?.paymentStatus === "paid";
             }
             return true;
-        })
-        .sort((a, b) => {
-            if (overviewFilter !== "salary") return 0;
-            const salaryA = Number(a.salaryStructure?.grossMonthly || 0);
-            const salaryB = Number(b.salaryStructure?.grossMonthly || 0);
+        } )
+        .sort( ( a, b ) => {
+            if ( overviewFilter !== "salary" ) return 0;
+            const salaryA = Number( a.salaryStructure?.grossMonthly || 0 );
+            const salaryB = Number( b.salaryStructure?.grossMonthly || 0 );
             return salarySort === "desc" ? salaryB - salaryA : salaryA - salaryB;
-        });
+        } );
 
-    const selectedMonthLabel = new Date(`${selectedMonth}-02`).toLocaleDateString(
+    const selectedMonthLabel = new Date( `${selectedMonth}-02` ).toLocaleDateString(
         "en-IN",
         { month: "long", year: "numeric" }
     );
@@ -832,9 +853,9 @@ function AdminPayroll() {
                             type="month"
                             id="payrollMonth"
                             value={selectedMonth}
-                            onChange={(event) => {
-                                setSelectedMonth(event.target.value);
-                                setPage(1);
+                            onChange={( event ) => {
+                                setSelectedMonth( event.target.value );
+                                setPage( 1 );
                                 closeModal();
                             }}
                         />
@@ -847,9 +868,9 @@ function AdminPayroll() {
                             type="search"
                             placeholder="Search by name or email"
                             value={search}
-                            onChange={(event) => {
-                                setSearch(event.target.value);
-                                setPage(1);
+                            onChange={( event ) => {
+                                setSearch( event.target.value );
+                                setPage( 1 );
                             }}
                         />
                     </div>
@@ -859,14 +880,14 @@ function AdminPayroll() {
                         <select
                             id="payrollLimit"
                             value={limit}
-                            onChange={(event) => {
-                                setLimit(Number(event.target.value));
-                                setPage(1);
+                            onChange={( event ) => {
+                                setLimit( Number( event.target.value ) );
+                                setPage( 1 );
                             }}
                         >
-                            {[5, 10, 20, 50].map((size) => (
+                            {[5, 10, 20, 50].map( ( size ) => (
                                 <option key={size} value={size}>{size}</option>
-                            ))}
+                            ) )}
                         </select>
                     </div>
                 </div>
@@ -876,7 +897,7 @@ function AdminPayroll() {
                         type="button"
                         className={`payroll-overview-card overview-employees ${overviewFilter === "all" ? "is-active" : ""}`}
                         aria-pressed={overviewFilter === "all"}
-                        onClick={() => setOverviewFilter("all")}
+                        onClick={() => setOverviewFilter( "all" )}
                     >
                         <span className="payroll-overview-top">
                             <span className="payroll-overview-icon">♙</span>
@@ -892,8 +913,8 @@ function AdminPayroll() {
                         className={`payroll-overview-card overview-salary ${overviewFilter === "salary" ? "is-active" : ""}`}
                         aria-pressed={overviewFilter === "salary"}
                         onClick={() => {
-                            setOverviewFilter("salary");
-                            setSalarySort((current) => current === "desc" ? "asc" : "desc");
+                            setOverviewFilter( "salary" );
+                            setSalarySort( ( current ) => current === "desc" ? "asc" : "desc" );
                         }}
                     >
                         <span className="payroll-overview-top">
@@ -901,7 +922,7 @@ function AdminPayroll() {
                             <span className="payroll-overview-caption">SALARY BASE</span>
                         </span>
                         <span className="payroll-overview-label">Visible monthly salary</span>
-                        <strong>{money(visibleSalaryTotal)}</strong>
+                        <strong>{money( visibleSalaryTotal )}</strong>
                         <small>Click to sort {salarySort === "desc" ? "highest first" : "lowest first"}</small>
                     </button>
 
@@ -909,7 +930,7 @@ function AdminPayroll() {
                         type="button"
                         className={`payroll-overview-card overview-draft ${overviewFilter === "draft" ? "is-active" : ""}`}
                         aria-pressed={overviewFilter === "draft"}
-                        onClick={() => setOverviewFilter((current) => current === "draft" ? "all" : "draft")}
+                        onClick={() => setOverviewFilter( ( current ) => current === "draft" ? "all" : "draft" )}
                     >
                         <span className="payroll-overview-top">
                             <span className="payroll-overview-icon">◷</span>
@@ -924,7 +945,7 @@ function AdminPayroll() {
                         type="button"
                         className={`payroll-overview-card overview-paid ${overviewFilter === "paid" ? "is-active" : ""}`}
                         aria-pressed={overviewFilter === "paid"}
-                        onClick={() => setOverviewFilter((current) => current === "paid" ? "all" : "paid")}
+                        onClick={() => setOverviewFilter( ( current ) => current === "paid" ? "all" : "paid" )}
                     >
                         <span className="payroll-overview-top">
                             <span className="payroll-overview-icon">✓</span>
@@ -936,13 +957,6 @@ function AdminPayroll() {
                     </button>
                 </div>
             </div>
-
-            {isCurrentMonth && (
-                <div className="payroll-info">
-                    Current month payroll is a preview until the month is complete.
-                    It cannot be finalized or paid.
-                </div>
-            )}
 
             {isFutureMonth && (
                 <div className="payroll-info payroll-warning">
@@ -975,43 +989,43 @@ function AdminPayroll() {
                                 <tr>
                                     <td colSpan="6" className="payroll-filter-empty">
                                         No employees match this overview filter on the current page.
-                                        <button type="button" onClick={() => setOverviewFilter("all")}>Clear filter</button>
+                                        <button type="button" onClick={() => setOverviewFilter( "all" )}>Clear filter</button>
                                     </td>
                                 </tr>
-                            ) : displayedEmployees.map((employee) => (
+                            ) : displayedEmployees.map( ( employee ) => (
                                 <tr key={employee._id}>
                                     <td><strong>{employee.name}</strong></td>
                                     <td>{employee.email}</td>
                                     <td>
                                         {employee.salaryStructure
-                                            ? money(employee.salaryStructure.grossMonthly)
+                                            ? money( employee.salaryStructure.grossMonthly )
                                             : "Not Assigned"}
                                     </td>
                                     <td>
                                         {employee.salaryStructure
-                                            ? formatStatus(employee.salaryStructure.salaryMode)
+                                            ? formatStatus( employee.salaryStructure.salaryMode )
                                             : "—"}
                                     </td>
                                     <td>
                                         <span
                                             className={`payroll-status status-${(
                                                 employee.payrollRun?.status || "not-generated"
-                                            ).replaceAll("_", "-")}`}
-                                    >
-                                        {formatStatus(employee.payrollRun?.status || "Not Generated")}
+                                            ).replaceAll( "_", "-" )}`}
+                                        >
+                                            {formatStatus( employee.payrollRun?.status || "Not Generated" )}
                                         </span>
                                     </td>
                                     <td>
                                         <button
                                             type="button"
                                             className="payroll-btn payroll-btn-primary"
-                                            onClick={() => handleViewPayroll(employee)}
+                                            onClick={() => handleViewPayroll( employee )}
                                         >
                                             View Payroll
                                         </button>
                                     </td>
                                 </tr>
-                            ))}
+                            ) )}
                         </tbody>
                     </table>
                 </div>
@@ -1020,15 +1034,15 @@ function AdminPayroll() {
             {!loading && !error && pagination.totalEmployees > 0 && (
                 <div className="payroll-pagination">
                     <span>
-                        Showing {((page - 1) * limit) + 1}–
-                        {Math.min(page * limit, pagination.totalEmployees)} of{" "}
+                        Showing {( ( page - 1 ) * limit ) + 1}–
+                        {Math.min( page * limit, pagination.totalEmployees )} of{" "}
                         {pagination.totalEmployees} employees
                     </span>
                     <div className="payroll-pagination-actions">
                         <button
                             type="button"
                             disabled={page <= 1}
-                            onClick={() => setPage((value) => Math.max(1, value - 1))}
+                            onClick={() => setPage( ( value ) => Math.max( 1, value - 1 ) )}
                         >
                             Previous
                         </button>
@@ -1037,8 +1051,8 @@ function AdminPayroll() {
                             type="button"
                             disabled={page >= pagination.totalPages}
                             onClick={() =>
-                                setPage((value) =>
-                                    Math.min(pagination.totalPages, value + 1)
+                                setPage( ( value ) =>
+                                    Math.min( pagination.totalPages, value + 1 )
                                 )
                             }
                         >
@@ -1051,8 +1065,8 @@ function AdminPayroll() {
             {selectedEmployee && createPortal(
                 <div
                     className="payroll-modal-overlay"
-                    onMouseDown={(event) => {
-                        if (event.target === event.currentTarget) closeModal();
+                    onMouseDown={( event ) => {
+                        if ( event.target === event.currentTarget ) closeModal();
                     }}
                 >
                     <section
@@ -1091,213 +1105,351 @@ function AdminPayroll() {
 
                         {payrollDetails && (
                             <>
-                                <div className="payroll-company-banner">
-                                    <div className="payroll-company-mark" aria-hidden="true">
-                                        {companyName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "CO"}
-                                    </div>
-                                    <div className="payroll-company-copy">
-                                        {isEditingCompany ? (
-                                            <div className="payroll-company-edit">
-                                                <input
-                                                    type="text"
-                                                    value={companyName}
-                                                    maxLength={80}
-                                                    autoFocus
-                                                    onChange={(event) => setCompanyName(event.target.value)}
-                                                    onKeyDown={(event) => {
-                                                        if (event.key === "Enter") {
+                                <div className="payroll-print-area">
+                                    <div className="payroll-company-banner">
+                                        <div className="payroll-company-mark" aria-hidden="true">
+                                            {companyName.trim().split( /\s+/ ).filter( Boolean ).slice( 0, 2 ).map( ( part ) => part[0] ).join( "" ).toUpperCase() || "CO"}
+                                        </div>
+                                        <div className="payroll-company-copy">
+                                            {isEditingCompany ? (
+                                                <div className="payroll-company-edit">
+                                                    <input
+                                                        type="text"
+                                                        value={companyName}
+                                                        maxLength={80}
+                                                        autoFocus
+                                                        onChange={( event ) => setCompanyName( event.target.value )}
+                                                        onKeyDown={( event ) => {
+                                                            if ( event.key === "Enter" ) {
+                                                                const value = companyName.trim() || "Your Company";
+                                                                setCompanyName( value );
+                                                                localStorage.setItem( "payrollCompanyName", value );
+                                                                setIsEditingCompany( false );
+                                                            }
+                                                            if ( event.key === "Escape" ) setIsEditingCompany( false );
+                                                        }}
+                                                        aria-label="Company name"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
                                                             const value = companyName.trim() || "Your Company";
-                                                            setCompanyName(value);
-                                                            localStorage.setItem("payrollCompanyName", value);
-                                                            setIsEditingCompany(false);
-                                                        }
-                                                        if (event.key === "Escape") setIsEditingCompany(false);
-                                                    }}
-                                                    aria-label="Company name"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const value = companyName.trim() || "Your Company";
-                                                        setCompanyName(value);
-                                                        localStorage.setItem("payrollCompanyName", value);
-                                                        setIsEditingCompany(false);
-                                                    }}
-                                                >Save</button>
+                                                            setCompanyName( value );
+                                                            localStorage.setItem( "payrollCompanyName", value );
+                                                            setIsEditingCompany( false );
+                                                        }}
+                                                    >Save</button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <strong>{companyName || "Your Company"}</strong>
+                                                    <button
+                                                        type="button"
+                                                        className="payroll-company-edit-trigger"
+                                                        onClick={() => setIsEditingCompany( true )}
+                                                        aria-label="Edit company name"
+                                                        title="Edit company name"
+                                                    >✎</button>
+                                                </>
+                                            )}
+                                            <span>{selectedEmployee.name} · {selectedEmployee.email}</span>
+                                        </div>
+                                        <div className="payroll-company-period">
+                                            <span>Payslip period</span>
+                                            <strong>{selectedMonthLabel}</strong>
+                                        </div>
+                                    </div>
+                                    <section className="payroll-slip-sheet">
+                                        <div className="payroll-slip-heading">
+                                            <div>
+                                                <span className="payroll-slip-kicker">MONTHLY PAY STATEMENT</span>
+                                                <h3>Salary Statement</h3>
+                                                <p>Pay period: {selectedMonthLabel}</p>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <strong>{companyName || "Your Company"}</strong>
+                                            <div className="payroll-modal-header-actions">
                                                 <button
                                                     type="button"
-                                                    className="payroll-company-edit-trigger"
-                                                    onClick={() => setIsEditingCompany(true)}
-                                                    aria-label="Edit company name"
-                                                    title="Edit company name"
-                                                >✎</button>
-                                            </>
+                                                    className="payroll-btn payroll-btn-light"
+                                                    disabled={!run}
+                                                    onClick={() => window.print()}
+                                                >
+                                                    Print Payslip
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    className="payroll-btn payroll-btn-light"
+                                                    disabled={
+                                                        actionLoading ||
+                                                        payrollDetails.isPreview ||
+                                                        run?.status !== "draft" ||
+                                                        run?.employeeReview !== "pending"
+                                                    }
+                                                    onClick={handleSendPayroll}
+                                                >
+                                                    {actionLoading ? "Please wait..." : "Send to Employee"}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="payroll-btn payroll-btn-primary"
+                                                    disabled={actionLoading || isFutureMonth}
+                                                    onClick={handleCalculatePayroll}
+                                                >
+                                                    {actionLoading ? "Please wait..." : "Refresh Calculation"}
+                                                </button>
+
+                                                {canRecordPayment && (
+                                                    <button
+                                                        type="button"
+                                                        className="payroll-btn payroll-btn-primary"
+                                                        onClick={() => setShowPaymentModal( true )}
+                                                    >
+                                                        Record Payment
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {canRecordPayment && showPaymentModal && (
+                                            <div className="payroll-modal-overlay">
+                                                <div className="payroll-modal">
+                                                    <div className="payroll-modal-header">
+                                                        <h3>Record Employee Payment</h3>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowPaymentModal( false )}
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+
+                                                    <form className="payroll-form" onSubmit={handleAddPayment}>
+                                                        <h3>Record Payment</h3>
+
+                                                        <div className="payroll-form-grid">
+                                                            <label>
+                                                                Amount (₹)
+                                                                <input
+                                                                    type="number"
+                                                                    min="0.01"
+                                                                    max={balance}
+                                                                    step="0.01"
+                                                                    required
+                                                                    value={paymentForm.amount}
+                                                                    onChange={( event ) =>
+                                                                        setPaymentForm( {
+                                                                            ...paymentForm,
+                                                                            amount: event.target.value,
+                                                                        } )
+                                                                    }
+                                                                />
+                                                            </label>
+
+                                                            <label>
+                                                                Payment date
+                                                                <input
+                                                                    type="date"
+                                                                    required
+                                                                    value={paymentForm.paymentDate}
+                                                                    onChange={( event ) =>
+                                                                        setPaymentForm( {
+                                                                            ...paymentForm,
+                                                                            paymentDate: event.target.value,
+                                                                        } )
+                                                                    }
+                                                                />
+                                                            </label>
+
+                                                            <label>
+                                                                Payment method
+                                                                <select
+                                                                    value={paymentForm.paymentMethod}
+                                                                    onChange={( event ) =>
+                                                                        setPaymentForm( {
+                                                                            ...paymentForm,
+                                                                            paymentMethod: event.target.value,
+                                                                        } )
+                                                                    }
+                                                                >
+                                                                    <option value="bank_transfer">Bank Transfer</option>
+                                                                    <option value="upi">UPI</option>
+                                                                    <option value="cash">Cash</option>
+                                                                    <option value="other">Other</option>
+                                                                </select>
+                                                            </label>
+
+                                                            <label>
+                                                                Reference number
+                                                                <input
+                                                                    type="text"
+                                                                    value={paymentForm.reference}
+                                                                    onChange={( event ) =>
+                                                                        setPaymentForm( {
+                                                                            ...paymentForm,
+                                                                            reference: event.target.value,
+                                                                        } )
+                                                                    }
+                                                                    placeholder="Optional transaction reference"
+                                                                />
+                                                            </label>
+
+                                                            <label className="payroll-form-full">
+                                                                Note
+                                                                <input
+                                                                    type="text"
+                                                                    value={paymentForm.note}
+                                                                    onChange={( event ) =>
+                                                                        setPaymentForm( {
+                                                                            ...paymentForm,
+                                                                            note: event.target.value,
+                                                                        } )
+                                                                    }
+                                                                    placeholder="Optional note"
+                                                                />
+                                                            </label>
+                                                        </div>
+                                                        <div className="payroll-modal-actions">
+                                                            <button
+                                                                type="button"
+                                                                className="payroll-btn"
+                                                                onClick={() => setShowPaymentModal( false )}
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                            <button
+                                                                type="submit"
+                                                                className="payroll-btn payroll-btn-primary"
+                                                                disabled={actionLoading}
+                                                            >
+                                                                {actionLoading ? "Please wait..." : "Record Payment"}
+                                                            </button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
                                         )}
-                                        <span>{selectedEmployee.name} · {selectedEmployee.email}</span>
-                                    </div>
-                                    <div className="payroll-company-period">
-                                        <span>Payslip period</span>
-                                        <strong>{selectedMonthLabel}</strong>
-                                    </div>
-                                </div>
-                                <section className="payroll-slip-sheet">
-                                    <div className="payroll-slip-heading">
-                                        <div>
-                                            <span className="payroll-slip-kicker">MONTHLY PAY STATEMENT</span>
-                                            <h3>Salary Statement</h3>
-                                            <p>Pay period: {selectedMonthLabel}</p>
+
+
+                                        <div className="payroll-slip-employee-grid">
+                                            <div><span>Employee Name</span><strong>{selectedEmployee.name || "—"}</strong></div>
+                                            <div><span>Email</span><strong>{selectedEmployee.email || "—"}</strong></div>
+                                            <div><span>Salary Mode</span><strong>{formatStatus( payrollDetails.salaryStructure?.salaryMode || "—" )}</strong></div>
+                                            <div><span>Payroll Status</span><strong>{payrollDetails.isPreview ? "Live Preview · Till Date" : formatStatus( run?.status || "Not Generated" )}</strong></div>
+                                            <div><span>Employee Review</span><strong>{formatStatus( run?.employeeReview || "Not Available" )}</strong></div>
+                                            <div><span>Payment Status</span><strong>{isCurrentMonth ? "Preview only" : formatStatus( run?.paymentStatus || "Pending" )}</strong></div>
                                         </div>
-                                        <div className="payroll-modal-header-actions">
-                                            <button
-                                                type="button"
-                                                className="payroll-btn payroll-btn-light"
-                                                disabled={!run}
-                                                onClick={() => window.print()}
-                                            >
-                                                Print Payslip
-                                            </button>
 
-                                            <button
-                                                type="button"
-                                                className="payroll-btn payroll-btn-light"
-                                                disabled={
-                                                    actionLoading ||
-                                                    payrollDetails.isPreview ||
-                                                    run?.status !== "draft"  ||
-                                                    run?.employeeReview !== "pending"
-                                                }
-                                                onClick={handleSendPayroll}
-                                            >
-                                                {actionLoading ? "Please wait..." : "Send to Employee"}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="payroll-btn payroll-btn-primary"
-                                                disabled={actionLoading || isFutureMonth}
-                                                onClick={handleCalculatePayroll}
-                                            >
-                                                {actionLoading ? "Please wait..." : "Refresh Calculation"}
-                                            </button>
+                                        <div className="payroll-slip-ledger">
+                                            <section className="payroll-ledger-panel">
+                                                <h4>Earnings</h4>
+                                                <div className="payroll-ledger-row"><span>Gross Monthly Salary</span><strong>{payrollDetails.salaryStructure ? money( payrollDetails.salaryStructure.grossMonthly ) : "Not Assigned"}</strong></div>
+                                                <div className="payroll-ledger-row"><span>Bonus</span><strong>{money( bonusTotal )}</strong></div>
+                                                <div className="payroll-ledger-row"><span>Other Earnings</span><strong>{money( incrementTotal + Number( run?.salaryCorrectionAmount || 0 ) )}</strong></div>
+                                            </section>
+                                            <section className="payroll-ledger-panel is-deduction">
+                                                <h4>Deductions</h4>
+                                                <div className="payroll-ledger-row"><span>Unpaid Leave Deduction</span><strong>{run ? money( run.unpaidLeaveDeduction ) : "—"}</strong></div>
+                                                <div className="payroll-ledger-row"><span>Attendance Shortfall</span><strong>{money( run?.shortfallAmount )}</strong></div>
+                                                <div className="payroll-ledger-row"><span>Additional Deductions</span><strong>{money( deductionTotal )}</strong></div>
+                                            </section>
                                         </div>
-                                    </div>
 
-                                    <div className="payroll-slip-employee-grid">
-                                        <div><span>Employee Name</span><strong>{selectedEmployee.name || "—"}</strong></div>
-                                        <div><span>Email</span><strong>{selectedEmployee.email || "—"}</strong></div>
-                                        <div><span>Salary Mode</span><strong>{formatStatus(payrollDetails.salaryStructure?.salaryMode || "—")}</strong></div>
-                                        <div><span>Payroll Status</span><strong>{payrollDetails.isPreview ? "Live Preview · Till Date" : formatStatus(run?.status || "Not Generated")}</strong></div>
-                                        <div><span>Employee Review</span><strong>{formatStatus(run?.employeeReview || "Not Available")}</strong></div>
-                                        <div><span>Payment Status</span><strong>{isCurrentMonth ? "Preview only" : formatStatus(run?.paymentStatus || "Pending")}</strong></div>
-                                    </div>
-
-                                    <div className="payroll-slip-ledger">
-                                        <section className="payroll-ledger-panel">
-                                            <h4>Earnings</h4>
-                                            <div className="payroll-ledger-row"><span>Gross Monthly Salary</span><strong>{payrollDetails.salaryStructure ? money(payrollDetails.salaryStructure.grossMonthly) : "Not Assigned"}</strong></div>
-                                            <div className="payroll-ledger-row"><span>Bonus</span><strong>{money(bonusTotal)}</strong></div>
-                                            <div className="payroll-ledger-row"><span>Other Earnings</span><strong>{money(incrementTotal + Number(run?.salaryCorrectionAmount || 0))}</strong></div>
-                                        </section>
-                                        <section className="payroll-ledger-panel is-deduction">
-                                            <h4>Deductions</h4>
-                                            <div className="payroll-ledger-row"><span>Unpaid Leave Deduction</span><strong>{run ? money(run.unpaidLeaveDeduction) : "—"}</strong></div>
-                                            <div className="payroll-ledger-row"><span>Attendance Shortfall</span><strong>{money(run?.shortfallAmount)}</strong></div>
-                                            <div className="payroll-ledger-row"><span>Additional Deductions</span><strong>{money(deductionTotal)}</strong></div>
-                                        </section>
-                                    </div>
-
-                                    <div className="payroll-net-pay-row">
-                                        <div><span>NET PAYABLE</span><small>{payrollDetails.isPreview ? `Estimated payable through ${formatDate(new Date())}` : `Final amount for ${selectedMonthLabel}`}</small></div>
-                                        <strong>{run ? money(netSalary) : "Not Calculated"}</strong>
-                                    </div>
-
-                                <div className="payroll-attendance-summary">
-                                    <h3>Attendance Summary</h3>
-                                    <div className="payroll-attendance-metrics">
-                                    <div>
-                                        <span>Expected Working Days</span>
-                                        <strong>{payrollDetails.workingHours?.expectedWorkingDays ?? "—"}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Expected Hours</span>
-                                        <strong>{payrollDetails.workingHours?.expectedHours ?? "—"}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Actual Worked Hours</span>
-                                        <strong>{payrollDetails.attendance?.actualWorkedHours ?? "—"}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Credited Hours</span>
-                                        <strong>{payrollDetails.attendance?.creditedHours ?? "—"}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Paid Leave Days</span>
-                                        <strong>{run?.paidLeaveDays ?? "—"}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Unpaid Leave Days</span>
-                                        <strong>{run?.unpaidLeaveDays ?? "—"}</strong>
-                                    </div>
-                                    <div>
-                                        <span>Unpaid Leave Deduction</span>
-                                        <strong>{run ? money(run.unpaidLeaveDeduction) : "—"}</strong>
-                                    </div>
-                                    </div>
-                                </div>
-
-                                <div className="payroll-leave-heading payroll-monthly-leave-heading">
-                                    <div>
-                                        <span className="payroll-section-kicker">MONTHLY ATTENDANCE RECORD</span>
-                                        <h3>Leave Details</h3>
-                                    </div>
-                                    <span className="payroll-leave-period">{selectedMonthLabel}</span>
-                                </div>
-
-                                <div className="payroll-monthly-leave-grid">
-                                    <section className="payroll-monthly-leave-card is-paid">
-                                        <div className="payroll-monthly-leave-top">
-                                            <div>
-                                                <span>Paid Leave</span>
-                                                <strong>{payrollDetails.leaveSummary?.paidTaken ?? 0} <small>days</small></strong>
-                                            </div>
-                                            <span className="payroll-monthly-leave-icon">✓</span>
+                                        <div className="payroll-net-pay-row">
+                                            <div><span>NET PAYABLE</span><small>{payrollDetails.isPreview ? `Estimated payable through ${formatDate( new Date() )}` : `Final amount for ${selectedMonthLabel}`}</small></div>
+                                            <strong>{run ? money( netSalary ) : "Not Calculated"}</strong>
                                         </div>
-                                        <div className="payroll-monthly-leave-dates">
-                                            <span className="payroll-monthly-leave-label">Dates</span>
-                                            {(payrollDetails.leaveSummary?.paidDates || []).length ? (
-                                                <div className="payroll-leave-date-pills">
-                                                    {payrollDetails.leaveSummary.paidDates.map((date, index) => (
-                                                        <span key={`paid-${index}`}>{formatDate(date)}</span>
-                                                    ))}
+
+                                        {run && (
+                                            <div className="payroll-payment-summary">
+                                            
+             
+                                    </div>
+                                )}
+
+                                        <div className="payroll-attendance-summary">
+                                            <h3>Attendance Summary</h3>
+                                            <div className="payroll-attendance-metrics">
+                                                <div>
+                                                    <span>Expected Working Days</span>
+                                                    <strong>{payrollDetails.workingHours?.expectedWorkingDays ?? "—"}</strong>
                                                 </div>
-                                            ) : <p>No paid leave taken this month.</p>}
-                                        </div>
-                                    </section>
-
-                                    <section className="payroll-monthly-leave-card is-unpaid">
-                                        <div className="payroll-monthly-leave-top">
-                                            <div>
-                                                <span>Unpaid Leave</span>
-                                                <strong>{payrollDetails.leaveSummary?.unpaidTaken ?? 0} <small>days</small></strong>
-                                            </div>
-                                            <span className="payroll-monthly-leave-icon">−</span>
-                                        </div>
-                                        <div className="payroll-monthly-leave-dates">
-                                            <span className="payroll-monthly-leave-label">Dates</span>
-                                            {(payrollDetails.leaveSummary?.unpaidDates || []).length ? (
-                                                <div className="payroll-leave-date-pills">
-                                                    {payrollDetails.leaveSummary.unpaidDates.map((date, index) => (
-                                                        <span key={`unpaid-${index}`}>{formatDate(date)}</span>
-                                                    ))}
+                                                <div>
+                                                    <span>Expected Hours</span>
+                                                    <strong>{payrollDetails.workingHours?.expectedHours ?? "—"}</strong>
                                                 </div>
-                                            ) : <p>No unpaid leave taken this month.</p>}
+                                                <div>
+                                                    <span>Actual Worked Hours</span>
+                                                    <strong>{payrollDetails.attendance?.actualWorkedHours ?? "—"}</strong>
+                                                </div>
+                                                <div>
+                                                    <span>Credited Hours</span>
+                                                    <strong>{payrollDetails.attendance?.creditedHours ?? "—"}</strong>
+                                                </div>
+                                                <div>
+                                                    <span>Paid Leave Days</span>
+                                                    <strong>{run?.paidLeaveDays ?? "—"}</strong>
+                                                </div>
+                                                <div>
+                                                    <span>Unpaid Leave Days</span>
+                                                    <strong>{run?.unpaidLeaveDays ?? "—"}</strong>
+                                                </div>
+                                                <div>
+                                                    <span>Unpaid Leave Deduction</span>
+                                                    <strong>{run ? money( run.unpaidLeaveDeduction ) : "—"}</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="payroll-leave-heading payroll-monthly-leave-heading">
+                                            <div>
+                                                <span className="payroll-section-kicker">MONTHLY ATTENDANCE RECORD</span>
+                                                <h3>Leave Details</h3>
+                                            </div>
+                                            <span className="payroll-leave-period">{selectedMonthLabel}</span>
+                                        </div>
+
+                                        <div className="payroll-monthly-leave-grid">
+                                            <section className="payroll-monthly-leave-card is-paid">
+                                                <div className="payroll-monthly-leave-top">
+                                                    <div>
+                                                        <span>Paid Leave</span>
+                                                        <strong>{payrollDetails.leaveSummary?.paidTaken ?? 0} <small>days</small></strong>
+                                                    </div>
+                                                    <span className="payroll-monthly-leave-icon">✓</span>
+                                                </div>
+                                                <div className="payroll-monthly-leave-dates">
+                                                    <span className="payroll-monthly-leave-label">Dates</span>
+                                                    {( payrollDetails.leaveSummary?.paidDates || [] ).length ? (
+                                                        <div className="payroll-leave-date-pills">
+                                                            {payrollDetails.leaveSummary.paidDates.map( ( date, index ) => (
+                                                                <span key={`paid-${index}`}>{formatDate( date )}</span>
+                                                            ) )}
+                                                        </div>
+                                                    ) : <p>No paid leave taken this month.</p>}
+                                                </div>
+                                            </section>
+
+                                            <section className="payroll-monthly-leave-card is-unpaid">
+                                                <div className="payroll-monthly-leave-top">
+                                                    <div>
+                                                        <span>Unpaid Leave</span>
+                                                        <strong>{payrollDetails.leaveSummary?.unpaidTaken ?? 0} <small>days</small></strong>
+                                                    </div>
+                                                    <span className="payroll-monthly-leave-icon">−</span>
+                                                </div>
+                                                <div className="payroll-monthly-leave-dates">
+                                                    <span className="payroll-monthly-leave-label">Dates</span>
+                                                    {( payrollDetails.leaveSummary?.unpaidDates || [] ).length ? (
+                                                        <div className="payroll-leave-date-pills">
+                                                            {payrollDetails.leaveSummary.unpaidDates.map( ( date, index ) => (
+                                                                <span key={`unpaid-${index}`}>{formatDate( date )}</span>
+                                                            ) )}
+                                                        </div>
+                                                    ) : <p>No unpaid leave taken this month.</p>}
+                                                </div>
+                                            </section>
                                         </div>
                                     </section>
                                 </div>
-                                </section>
 
                                 <div className="payroll-admin-adjustments-heading">
                                     <span className="payroll-slip-kicker">AUTHORIZED ADMIN ACTIONS</span>
@@ -1311,7 +1463,7 @@ function AdminPayroll() {
                                     </div>
                                 )}
 
-                                <details className="payroll-admin-tools" open={Boolean(editingItemId)}>
+                                <details className="payroll-admin-tools" open={Boolean( editingItemId )}>
                                     <summary className="payroll-admin-tools-summary">
                                         <span className="payroll-admin-tools-copy">
                                             <strong>Manage payroll entries</strong>
@@ -1320,235 +1472,235 @@ function AdminPayroll() {
                                         <span className="payroll-admin-tools-toggle">Open controls <span aria-hidden="true">＋</span></span>
                                     </summary>
                                     <div className="payroll-admin-tools-content">
-                                {canEditItems && (
-                                    <form className="payroll-form payroll-salary-addition-form" onSubmit={handleSaveSalaryAddition}>
-                                        <h4>Add Other Earnings</h4>
-                                        <p className="payroll-muted">
-                                            Add a one-time earning separately from Bonus. A reason is mandatory and this entry does not change the employee's fixed salary structure.
-                                        </p>
-                                        <div className="payroll-form-grid">
-                                            <label>
-                                                Other Earnings Amount (₹)
-                                                <input
-                                                    type="number"
-                                                    min="0.01"
-                                                    step="0.01"
-                                                    required
-                                                    value={salaryCorrectionForm.amount}
-                                                    onChange={(event) => setSalaryCorrectionForm({ ...salaryCorrectionForm, amount: event.target.value })}
-                                                />
-                                            </label>
-                                            <label className="payroll-form-full">
-                                                Reason (required)
-                                                <textarea
-                                                    required
-                                                    maxLength={500}
-                                                    value={salaryCorrectionForm.reason}
-                                                    onChange={(event) => setSalaryCorrectionForm({ ...salaryCorrectionForm, reason: event.target.value })}
-                                                    placeholder="Enter approved reason for this earning"
-                                                />
-                                            </label>
-                                        </div>
-                                        <button type="submit" className="payroll-btn payroll-btn-primary" disabled={actionLoading}>
-                                            {actionLoading ? "Please wait..." : "Add Other Earnings"}
-                                        </button>
-                                    </form>
-                                )}
+                                        {canEditItems && (
+                                            <form className="payroll-form payroll-salary-addition-form" onSubmit={handleSaveSalaryAddition}>
+                                                <h4>Add Other Earnings</h4>
+                                                <p className="payroll-muted">
+                                                    Add a one-time earning separately from Bonus. A reason is mandatory and this entry does not change the employee's fixed salary structure.
+                                                </p>
+                                                <div className="payroll-form-grid">
+                                                    <label>
+                                                        Other Earnings Amount (₹)
+                                                        <input
+                                                            type="number"
+                                                            min="0.01"
+                                                            step="0.01"
+                                                            required
+                                                            value={salaryCorrectionForm.amount}
+                                                            onChange={( event ) => setSalaryCorrectionForm( { ...salaryCorrectionForm, amount: event.target.value } )}
+                                                        />
+                                                    </label>
+                                                    <label className="payroll-form-full">
+                                                        Reason (required)
+                                                        <textarea
+                                                            required
+                                                            maxLength={500}
+                                                            value={salaryCorrectionForm.reason}
+                                                            onChange={( event ) => setSalaryCorrectionForm( { ...salaryCorrectionForm, reason: event.target.value } )}
+                                                            placeholder="Enter approved reason for this earning"
+                                                        />
+                                                    </label>
+                                                </div>
+                                                <button type="submit" className="payroll-btn payroll-btn-primary" disabled={actionLoading}>
+                                                    {actionLoading ? "Please wait..." : "Add Other Earnings"}
+                                                </button>
+                                            </form>
+                                        )}
 
-                                {canEditItems && run && !isCurrentMonth && (
-                                    <form className="payroll-form" onSubmit={handleSaveAdjustment}>
-                                        <h4>Reduce / Waive Salary Deduction</h4>
-                                        <p className="payroll-muted">
-                                            Apply a partial reduction or full waiver to shortfall or unpaid leave deduction.
-                                        </p>
+                                        {canEditItems && run && !isCurrentMonth && (
+                                            <form className="payroll-form" onSubmit={handleSaveAdjustment}>
+                                                <h4>Reduce / Waive Salary Deduction</h4>
+                                                <p className="payroll-muted">
+                                                    Apply a partial reduction or full waiver to shortfall or unpaid leave deduction.
+                                                </p>
 
-                                        <div className="payroll-form-grid">
-                                            <label>
-                                                Deduction category
-                                                <select
-                                                    value={adjustmentForm.deductionType}
-                                                    onChange={(event) =>
-                                                        setAdjustmentForm({
-                                                            ...adjustmentForm,
-                                                            deductionType: event.target.value,
-                                                            adjustedDeduction: "",
-                                                        })
-                                                    }
-                                                >
-                                                    <option value="shortfall">Attendance shortfall</option>
-                                                    <option value="unpaid_leave">Unpaid leave</option>
-                                                </select>
-                                            </label>
+                                                <div className="payroll-form-grid">
+                                                    <label>
+                                                        Deduction category
+                                                        <select
+                                                            value={adjustmentForm.deductionType}
+                                                            onChange={( event ) =>
+                                                                setAdjustmentForm( {
+                                                                    ...adjustmentForm,
+                                                                    deductionType: event.target.value,
+                                                                    adjustedDeduction: "",
+                                                                } )
+                                                            }
+                                                        >
+                                                            <option value="shortfall">Attendance shortfall</option>
+                                                            <option value="unpaid_leave">Unpaid leave</option>
+                                                        </select>
+                                                    </label>
 
-                                            <label>
-                                                Original deduction
-                                                <input
-                                                    type="text"
-                                                    readOnly
-                                                    value={money(
-                                                        adjustmentForm.deductionType === "shortfall"
-                                                            ? run.shortfallAmount
-                                                            : run.unpaidLeaveDeduction
-                                                    )}
-                                                />
-                                            </label>
-
-                                            <label>
-                                                Adjustment type
-                                                <select
-                                                    value={adjustmentForm.adjustmentType}
-                                                    onChange={(event) =>
-                                                        setAdjustmentForm({
-                                                            ...adjustmentForm,
-                                                            adjustmentType: event.target.value,
-                                                            adjustedDeduction:
-                                                                event.target.value === "waive" ? "0" : "",
-                                                        })
-                                                    }
-                                                >
-                                                    <option value="reduce">Partial reduction</option>
-                                                    <option value="waive">Full waiver</option>
-                                                </select>
-                                            </label>
-
-                                            {adjustmentForm.adjustmentType === "reduce" && (
-                                                <label>
-                                                    Deduction after reduction (₹)
-                                                    <input
-                                                        type="number"
-                                                        min="0.01"
-                                                        max={Math.max(
-                                                            0,
-                                                            Number(
+                                                    <label>
+                                                        Original deduction
+                                                        <input
+                                                            type="text"
+                                                            readOnly
+                                                            value={money(
                                                                 adjustmentForm.deductionType === "shortfall"
                                                                     ? run.shortfallAmount
                                                                     : run.unpaidLeaveDeduction
-                                                            ) - 0.01
-                                                        )}
-                                                        step="0.01"
-                                                        required
-                                                        value={adjustmentForm.adjustedDeduction}
-                                                        onChange={(event) =>
-                                                            setAdjustmentForm({
-                                                                ...adjustmentForm,
-                                                                adjustedDeduction: event.target.value,
-                                                            })
-                                                        }
-                                                    />
-                                                </label>
-                                            )}
+                                                            )}
+                                                        />
+                                                    </label>
 
-                                            <label className="payroll-form-full">
-                                                Reason (required)
-                                                <textarea
-                                                    required
-                                                    maxLength={500}
-                                                    value={adjustmentForm.reason}
-                                                    onChange={(event) =>
-                                                        setAdjustmentForm({
-                                                            ...adjustmentForm,
-                                                            reason: event.target.value,
-                                                        })
-                                                    }
-                                                    placeholder="Enter the reason approved by the admin"
-                                                />
-                                            </label>
-                                        </div>
+                                                    <label>
+                                                        Adjustment type
+                                                        <select
+                                                            value={adjustmentForm.adjustmentType}
+                                                            onChange={( event ) =>
+                                                                setAdjustmentForm( {
+                                                                    ...adjustmentForm,
+                                                                    adjustmentType: event.target.value,
+                                                                    adjustedDeduction:
+                                                                        event.target.value === "waive" ? "0" : "",
+                                                                } )
+                                                            }
+                                                        >
+                                                            <option value="reduce">Partial reduction</option>
+                                                            <option value="waive">Full waiver</option>
+                                                        </select>
+                                                    </label>
 
-                                        <button
-                                            type="submit"
-                                            className="payroll-btn payroll-btn-primary"
-                                            disabled={actionLoading}
-                                        >
-                                            {actionLoading ? "Please wait..." : "Apply Deduction Adjustment"}
-                                        </button>
-                                    </form>
-                                )}
+                                                    {adjustmentForm.adjustmentType === "reduce" && (
+                                                        <label>
+                                                            Deduction after reduction (₹)
+                                                            <input
+                                                                type="number"
+                                                                min="0.01"
+                                                                max={Math.max(
+                                                                    0,
+                                                                    Number(
+                                                                        adjustmentForm.deductionType === "shortfall"
+                                                                            ? run.shortfallAmount
+                                                                            : run.unpaidLeaveDeduction
+                                                                    ) - 0.01
+                                                                )}
+                                                                step="0.01"
+                                                                required
+                                                                value={adjustmentForm.adjustedDeduction}
+                                                                onChange={( event ) =>
+                                                                    setAdjustmentForm( {
+                                                                        ...adjustmentForm,
+                                                                        adjustedDeduction: event.target.value,
+                                                                    } )
+                                                                }
+                                                            />
+                                                        </label>
+                                                    )}
 
-                                {canEditItems && (
-                                    <form className="payroll-form" onSubmit={handleSaveItem}>
-                                        <h4>{editingItemId ? "Edit Payroll Item" : "Add Bonus / Deduction"}</h4>
+                                                    <label className="payroll-form-full">
+                                                        Reason (required)
+                                                        <textarea
+                                                            required
+                                                            maxLength={500}
+                                                            value={adjustmentForm.reason}
+                                                            onChange={( event ) =>
+                                                                setAdjustmentForm( {
+                                                                    ...adjustmentForm,
+                                                                    reason: event.target.value,
+                                                                } )
+                                                            }
+                                                            placeholder="Enter the reason approved by the admin"
+                                                        />
+                                                    </label>
+                                                </div>
 
-                                        <div className="payroll-form-grid">
-                                            <label>
-                                                Item type
-                                                <select
-                                                    value={itemForm.itemType}
-                                                    onChange={(event) =>
-                                                        setItemForm({
-                                                            ...itemForm,
-                                                            itemType: event.target.value,
-                                                        })
-                                                    }
-                                                >
-                                                    <option value="bonus">Bonus</option>
-                                                    <option value="deduction">Deduction</option>
-                                                    <option value="increment">Other Earnings</option>
-                                                </select>
-                                            </label>
-
-                                            <label>
-                                                Amount (₹)
-                                                <input
-                                                    type="number"
-                                                    min="0.01"
-                                                    step="0.01"
-                                                    required
-                                                    value={itemForm.amount}
-                                                    onChange={(event) =>
-                                                        setItemForm({
-                                                            ...itemForm,
-                                                            amount: event.target.value,
-                                                        })
-                                                    }
-                                                />
-                                            </label>
-
-                                            <label className="payroll-form-full">
-                                                Reason / Note
-                                                <input
-                                                    type="text"
-                                                    required
-                                                    maxLength={250}
-                                                    value={itemForm.note}
-                                                    onChange={(event) =>
-                                                        setItemForm({
-                                                            ...itemForm,
-                                                            note: event.target.value,
-                                                        })
-                                                    }
-                                                    placeholder="Enter reason for this adjustment"
-                                                />
-                                            </label>
-                                        </div>
-
-                                        <div className="payroll-form-actions">
-                                            <button
-                                                type="submit"
-                                                className="payroll-btn payroll-btn-primary"
-                                                disabled={actionLoading}
-                                            >
-                                                {editingItemId ? "Update Item" : "Add Item"}
-                                            </button>
-                                            {editingItemId && (
                                                 <button
-                                                    type="button"
-                                                    className="payroll-btn payroll-btn-light"
-                                                    onClick={() => {
-                                                        setEditingItemId(null);
-                                                        setItemForm({
-                                                            itemType: "bonus",
-                                                            amount: "",
-                                                            note: "",
-                                                        });
-                                                    }}
+                                                    type="submit"
+                                                    className="payroll-btn payroll-btn-primary"
+                                                    disabled={actionLoading}
                                                 >
-                                                    Cancel Edit
+                                                    {actionLoading ? "Please wait..." : "Apply Deduction Adjustment"}
                                                 </button>
-                                            )}
-                                        </div>
-                                    </form>
-                                )}
+                                            </form>
+                                        )}
+
+                                        {canEditItems && (
+                                            <form className="payroll-form" onSubmit={handleSaveItem}>
+                                                <h4>{editingItemId ? "Edit Payroll Item" : "Add Bonus / Deduction"}</h4>
+
+                                                <div className="payroll-form-grid">
+                                                    <label>
+                                                        Item type
+                                                        <select
+                                                            value={itemForm.itemType}
+                                                            onChange={( event ) =>
+                                                                setItemForm( {
+                                                                    ...itemForm,
+                                                                    itemType: event.target.value,
+                                                                } )
+                                                            }
+                                                        >
+                                                            <option value="bonus">Bonus</option>
+                                                            <option value="deduction">Deduction</option>
+                                                            <option value="increment">Other Earnings</option>
+                                                        </select>
+                                                    </label>
+
+                                                    <label>
+                                                        Amount (₹)
+                                                        <input
+                                                            type="number"
+                                                            min="0.01"
+                                                            step="0.01"
+                                                            required
+                                                            value={itemForm.amount}
+                                                            onChange={( event ) =>
+                                                                setItemForm( {
+                                                                    ...itemForm,
+                                                                    amount: event.target.value,
+                                                                } )
+                                                            }
+                                                        />
+                                                    </label>
+
+                                                    <label className="payroll-form-full">
+                                                        Reason / Note
+                                                        <input
+                                                            type="text"
+                                                            required
+                                                            maxLength={250}
+                                                            value={itemForm.note}
+                                                            onChange={( event ) =>
+                                                                setItemForm( {
+                                                                    ...itemForm,
+                                                                    note: event.target.value,
+                                                                } )
+                                                            }
+                                                            placeholder="Enter reason for this adjustment"
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <div className="payroll-form-actions">
+                                                    <button
+                                                        type="submit"
+                                                        className="payroll-btn payroll-btn-primary"
+                                                        disabled={actionLoading}
+                                                    >
+                                                        {editingItemId ? "Update Item" : "Add Item"}
+                                                    </button>
+                                                    {editingItemId && (
+                                                        <button
+                                                            type="button"
+                                                            className="payroll-btn payroll-btn-light"
+                                                            onClick={() => {
+                                                                setEditingItemId( null );
+                                                                setItemForm( {
+                                                                    itemType: "bonus",
+                                                                    amount: "",
+                                                                    note: "",
+                                                                } );
+                                                            }}
+                                                        >
+                                                            Cancel Edit
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </form>
+                                        )}
 
                                     </div>
                                 </details>
@@ -1565,24 +1717,24 @@ function AdminPayroll() {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {items.map((item) => (
+                                                {items.map( ( item ) => (
                                                     <tr key={item._id}>
-                                                        <td>{item.itemType === "increment" ? "Other Earnings" : formatStatus(item.itemType)}</td>
-                                                        <td>{money(item.amount)}</td>
+                                                        <td>{item.itemType === "increment" ? "Other Earnings" : formatStatus( item.itemType )}</td>
+                                                        <td>{money( item.amount )}</td>
                                                         <td>{item.note}</td>
                                                         <td>
                                                             {canEditItems ? (
                                                                 <div className="payroll-inline-actions">
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => handleEditItem(item)}
+                                                                        onClick={() => handleEditItem( item )}
                                                                     >
                                                                         Edit
                                                                     </button>
                                                                     <button
                                                                         type="button"
                                                                         className="payroll-danger-text"
-                                                                        onClick={() => handleDeleteItem(item._id)}
+                                                                        onClick={() => handleDeleteItem( item._id )}
                                                                     >
                                                                         Delete
                                                                     </button>
@@ -1590,7 +1742,7 @@ function AdminPayroll() {
                                                             ) : "—"}
                                                         </td>
                                                     </tr>
-                                                ))}
+                                                ) )}
                                             </tbody>
                                         </table>
                                     </div>
@@ -1609,7 +1761,7 @@ function AdminPayroll() {
                                             <textarea
                                                 required
                                                 value={resolutionNote}
-                                                onChange={(event) => setResolutionNote(event.target.value)}
+                                                onChange={( event ) => setResolutionNote( event.target.value )}
                                                 placeholder="Explain how the dispute was resolved"
                                             />
                                         </label>
@@ -1645,119 +1797,8 @@ function AdminPayroll() {
                                     </div>
                                 )}
 
-                                {run?.status === "finalized" && (
+                                {run && (
                                     <>
-                                        <h3>Payment Summary</h3>
-                                        <div className="payroll-detail-grid">
-                                            <div>
-                                                <span>Net Salary</span>
-                                                <strong>{money(netSalary)}</strong>
-                                            </div>
-                                            <div>
-                                                <span>Total Paid</span>
-                                                <strong>{money(totalPaid)}</strong>
-                                            </div>
-                                            <div>
-                                                <span>Remaining Balance</span>
-                                                <strong>{money(balance)}</strong>
-                                            </div>
-                                            <div>
-                                                <span>Payment Status</span>
-                                                <strong>{formatStatus(run.paymentStatus)}</strong>
-                                            </div>
-                                        </div>
-
-                                        {canRecordPayment && (
-                                            <form className="payroll-form" onSubmit={handleAddPayment}>
-                                                <h3>Record Payment</h3>
-                                                <div className="payroll-form-grid">
-                                                    <label>
-                                                        Amount (₹)
-                                                        <input
-                                                            type="number"
-                                                            min="0.01"
-                                                            max={balance}
-                                                            step="0.01"
-                                                            required
-                                                            value={paymentForm.amount}
-                                                            onChange={(event) =>
-                                                                setPaymentForm({
-                                                                    ...paymentForm,
-                                                                    amount: event.target.value,
-                                                                })
-                                                            }
-                                                        />
-                                                    </label>
-                                                    <label>
-                                                        Payment date
-                                                        <input
-                                                            type="date"
-                                                            required
-                                                            value={paymentForm.paymentDate}
-                                                            onChange={(event) =>
-                                                                setPaymentForm({
-                                                                    ...paymentForm,
-                                                                    paymentDate: event.target.value,
-                                                                })
-                                                            }
-                                                        />
-                                                    </label>
-                                                    <label>
-                                                        Payment method
-                                                        <select
-                                                            value={paymentForm.paymentMethod}
-                                                            onChange={(event) =>
-                                                                setPaymentForm({
-                                                                    ...paymentForm,
-                                                                    paymentMethod: event.target.value,
-                                                                })
-                                                            }
-                                                        >
-                                                            <option value="bank_transfer">Bank Transfer</option>
-                                                            <option value="upi">UPI</option>
-                                                            <option value="cash">Cash</option>
-                                                            <option value="other">Other</option>
-                                                        </select>
-                                                    </label>
-                                                    <label>
-                                                        Reference number
-                                                        <input
-                                                            type="text"
-                                                            value={paymentForm.reference}
-                                                            onChange={(event) =>
-                                                                setPaymentForm({
-                                                                    ...paymentForm,
-                                                                    reference: event.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="Optional transaction reference"
-                                                        />
-                                                    </label>
-                                                    <label className="payroll-form-full">
-                                                        Note
-                                                        <input
-                                                            type="text"
-                                                            value={paymentForm.note}
-                                                            onChange={(event) =>
-                                                                setPaymentForm({
-                                                                    ...paymentForm,
-                                                                    note: event.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="Optional note"
-                                                        />
-                                                    </label>
-                                                </div>
-                                                <button
-                                                    type="submit"
-                                                    className="payroll-btn payroll-btn-primary"
-                                                    disabled={actionLoading}
-                                                >
-                                                    Record Payment
-                                                </button>
-                                            </form>
-                                        )}
-
                                         <h3>Payment History</h3>
                                         {payments.length > 0 ? (
                                             <div className="payroll-table-wrapper">
@@ -1773,26 +1814,26 @@ function AdminPayroll() {
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {payments.map((payment) => (
+                                                        {payments.map( ( payment ) => (
                                                             <tr key={payment._id}>
                                                                 <td>
-                                                                    {new Date(payment.paymentDate).toLocaleDateString("en-IN")}
+                                                                    {new Date( payment.paymentDate ).toLocaleDateString( "en-IN" )}
                                                                 </td>
-                                                                <td>{money(payment.amount)}</td>
-                                                                <td>{formatStatus(payment.paymentMethod)}</td>
+                                                                <td>{money( payment.amount )}</td>
+                                                                <td>{formatStatus( payment.paymentMethod )}</td>
                                                                 <td>{payment.reference || "—"}</td>
                                                                 <td>{payment.note || "—"}</td>
                                                                 <td>
                                                                     <button
                                                                         type="button"
                                                                         className="payroll-danger-text"
-                                                                        onClick={() => handleDeletePayment(payment._id)}
+                                                                        onClick={() => handleDeletePayment( payment._id )}
                                                                     >
                                                                         Delete
                                                                     </button>
                                                                 </td>
                                                             </tr>
-                                                        ))}
+                                                        ) )}
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -1801,8 +1842,6 @@ function AdminPayroll() {
                                         )}
                                     </>
                                 )}
-
-
                             </>
                         )}
                     </section>

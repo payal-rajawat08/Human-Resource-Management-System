@@ -205,7 +205,6 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
             additionalDeductions,
             netSalary: Number(netSalary.toFixed(2)),
         };
-
         // Current month preview must not be saved
         if (!saveDraft) {
             return res.status(200).json({
@@ -221,20 +220,26 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
             month: numericMonth,
             year: numericYear,
         });
-
-        // Only an unreviewed draft can be regenerated
-        if (
-            existingPayroll &&
-            (
-                existingPayroll.status !== "draft" ||
-                !["pending", "disputed"].includes(existingPayroll.employeeReview)
-            )
-        ) {
-            return res.status(409).json({
-                message: "Only unreviewed draft payroll can be regenerated.",
-            });
-        }
-
+        const totalPaidAmount = Number(
+            (existingPayroll?.payments || [])
+                .reduce(
+                    (sum, payment) => sum + Number(payment.amount || 0),
+                    0
+                )
+                .toFixed(2)
+            );
+        const paymentStatus =
+            totalPaidAmount <= 0
+                ? "pending"
+                : totalPaidAmount >= calculatedPayroll.netSalary
+                    ? "paid"
+                    : "partially_paid";
+        const remainingPayable = Number(
+            Math.max(
+                0,
+                calculatedPayroll.netSalary - totalPaidAmount
+            ).toFixed(2)
+        );
         const savedPayroll = await PayrollRun.findOneAndUpdate(
             {
                 employeeId,
@@ -271,7 +276,11 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
                     adjustmentAmount: payroll.adjustmentAmount || 0,
 
                     bonusAmount,
+                    incrementAmount,
                     additionalDeductions,
+
+                    totalPaidAmount,
+                    paymentStatus,
 
                     paidLeaveDays: payroll.paidLeaveDays,
                     unpaidLeaveDays: payroll.unpaidLeaveDays,
@@ -279,7 +288,8 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
                     netSalary: calculatedPayroll.netSalary,
 
                     status: "draft",
-                    employeeReview: existingPayroll?.employeeReview || "pending",
+                    employeeReview: "pending",
+                    finalizedAt: null,
                 },
             },
             {
@@ -293,7 +303,11 @@ router.post("/payroll/calculate", adminAuthMiddleware, permissionMiddleware("pay
             message: "Payroll calculated and saved successfully",
             isPreview: false,
             isPartialPeriod: Boolean(payroll.isPreview), 
-            payroll: savedPayroll,
+            payroll: {
+                ...savedPayroll.toObject(),
+                alreadyPaid: totalPaidAmount,
+                remainingPayable,
+            },
             payrollItems,
         });
     } catch (error) {
@@ -697,6 +711,7 @@ router.get("/payroll/my", authMiddleware, async (req, res) => {
 
         const filter = {
             employeeId: req.employeeId,
+            status: { $in: ["under_review", "finalized"] },
         };
 
         if (month) {
@@ -755,6 +770,8 @@ router.post("/payroll/:id/send-to-employee", adminAuthMiddleware, permissionMidd
                 message: "Employee email address is missing.",
             });
         }
+        payroll.status = "under_review";
+        await payroll.save();
         let notification = await Notification.findOne({
             employeeId: employee._id,
             relatedPayroll: payroll._id,
@@ -918,9 +935,12 @@ router.patch("/payroll/:id/accept", authMiddleware, async (req, res) => {
             });
         }
 
-        if (payroll.status !== "draft") {
+        if (
+            payroll.status !== "under_review" ||
+            payroll.employeeReview !== "pending"
+        ) {
             return res.status(400).json({
-                message: "Only draft payroll can be accepted",
+                message: "Only pending payroll under review can be disputed",
             });
         }
 
@@ -1023,62 +1043,14 @@ router.patch("/payroll/:id/dispute", authMiddleware, async (req, res) => {
             });
         }
 
-        if (payroll.status !== "draft") {
-            return res.status(400).json({
-                message: "Only draft payroll can be disputed",
-            });
-        }
-
-        payroll.employeeReview = "disputed";
-        payroll.disputeReason = disputeReason.trim();
-
-        await payroll.save();
-
-        return res.status(200).json({
-            message: "Payroll disputed successfully",
-            payroll,
-        });
-    } catch (error) {
-        console.error("Payroll dispute error:", error);
-
-        return res.status(500).json({
-            message: "Server error",
-        });
-    }
-});
-
-router.patch("/payroll/:id/dispute", authMiddleware, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { disputeReason } = req.body;
-
-        if (!disputeReason || !disputeReason.trim()) {
-            return res.status(400).json({
-                message: "Dispute reason is required",
-            });
-        }
-
-        const payroll = await PayrollRun.findById(id);
-
-        if (!payroll) {
-            return res.status(404).json({
-                message: "Payroll not found",
-            });
-        }
-
-        if (String(payroll.employeeId) !== String(req.employeeId)) {
-            return res.status(403).json({
-                message: "You can only access your own payroll",
-            });
-        }
-
-        if (
-            payroll.status !== "draft" ||
-            payroll.employeeReview !== "pending"
+       if (
+           payroll.status !== "under_review" ||
+           payroll.employeeReview !== "pending"
         ) {
             return res.status(400).json({
-                message: "Only pending draft payroll can be disputed",
+                message: "Only pending payroll under review can be disputed",
             });
+
         }
 
         payroll.employeeReview = "disputed";
@@ -1282,6 +1254,13 @@ router.patch("/payroll/:id/finalize", adminAuthMiddleware, permissionMiddleware(
 
         await payroll.save();
 
+        req.io.to(String(payroll.employeeId)).emit("payroll-status-updated", {
+            employeeId: String(payroll.employeeId),
+            payrollId: payroll._id,
+            status: payroll.status,
+            finalizedAt: payroll.finalizedAt,
+        });
+
         return res.status(200).json({
             message: "Payroll finalized successfully",
             payroll,
@@ -1366,8 +1345,16 @@ router.post("/payroll-adjustments", adminAuthMiddleware, permissionMiddleware("p
 
             if (
                 !payrollRun ||
-                payrollRun.status !== "draft" ||
-                payrollRun.employeeReview !== "pending"
+                !(
+                    (
+                        payrollRun.status === "draft" &&
+                        ["pending", "disputed"].includes(payrollRun.employeeReview)
+                    ) ||
+                    (
+                        payrollRun.status === "under_review" &&
+                        payrollRun.employeeReview === "disputed"
+                    )
+                )
             ) {
                 return res.status(409).json({
                     message: "Only an existing unreviewed draft payroll can be adjusted",
@@ -1539,9 +1526,15 @@ router.post("/payroll-items",adminAuthMiddleware,permissionMiddleware("payroll.m
 
             if (
                 existingPayroll &&
-                (
-                    existingPayroll.status !== "draft" ||
-                    !["pending","disputed"].includes(existingPayroll.employeeReview)
+                !(
+                    (
+                        existingPayroll.status === "draft" &&
+                        ["pending", "disputed"].includes(existingPayroll.employeeReview)
+                    ) ||
+                    (
+                        existingPayroll.status === "under_review" &&
+                        existingPayroll.employeeReview === "disputed"
+                    )
                 )
             ) {
                 return res.status(409).json({

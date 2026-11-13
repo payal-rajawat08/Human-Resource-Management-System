@@ -583,6 +583,7 @@ async function calculateEmployeePayroll({
             total + Number(adjustment.adjustmentAmount || 0),
         0
     );
+    
     // 17. Calculate final net salary
     const netSalary = Math.max(
         0,
